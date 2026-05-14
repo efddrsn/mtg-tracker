@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #12121a;
+  --color-surface-alt: #1a1a28;
+  --color-surface-hover: #22222f;
+  --color-border: #2a2a3a;
+  --color-border-light: #3a3a4a;
+  --color-text-primary: #e8e8ec;
+  --color-text-secondary: #8888a0;
+  --color-text-dim: #555570;
+  --color-accent: #6366f1;
+  --color-accent-hover: #818cf8;
+  --color-danger: #ef4444;
+
+  --color-mana-w: #f5e6b8;
+  --color-mana-w-bg: #3d3520;
+  --color-mana-u: #1e88e5;
+  --color-mana-u-bg: #0d2845;
+  --color-mana-b: #9c64a6;
+  --color-mana-b-bg: #1f1225;
+  --color-mana-r: #e53935;
+  --color-mana-r-bg: #3a1215;
+  --color-mana-g: #43a047;
+  --color-mana-g-bg: #122a15;
+  --color-mana-c: #90a4ae;
+  --color-mana-c-bg: #1e2428;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+html, body, #root {
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  background: #0a0a0f;
+  color: var(--color-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+}
+
+.counter-btn {
+  transition: transform 60ms ease-out, background-color 100ms;
+}
+.counter-btn:active {
+  transform: scale(0.92);
+}
+
+.phase-chip {
+  transition: all 150ms ease-out;
+}
+
+.widget-card {
+  transition: transform 100ms ease-out;
+}
+
+.reset-progress {
+  animation: reset-fill 600ms linear forwards;
+}
+@keyframes reset-fill {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+@keyframes pop-in {
+  0% { transform: scale(0.95); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.pop-in {
+  animation: pop-in 150ms ease-out;
+}
+
+.scroll-hide::-webkit-scrollbar {
+  display: none;
+}
+.scroll-hide {
+  scrollbar-width: none;
+}
