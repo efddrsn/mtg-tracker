@@ -1,11 +1,11 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import { Header } from './components/Header';
 import { Tracker } from './pages/Tracker';
 import { Settings } from './pages/Settings';
 
 function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <div className="flex flex-col h-full max-w-lg mx-auto">
         <Header />
         <Routes>
@@ -13,7 +13,7 @@ function App() {
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </div>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
