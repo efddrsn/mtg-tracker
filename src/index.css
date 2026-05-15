@@ -76,6 +76,22 @@ body {
   animation: pop-in 150ms ease-out;
 }
 
+@keyframes jiggle {
+  0%   { transform: rotate(-0.7deg) translate(0, 0); }
+  25%  { transform: rotate( 0.8deg) translate(0, -0.5px); }
+  50%  { transform: rotate(-0.6deg) translate(0,  0.5px); }
+  75%  { transform: rotate( 0.7deg) translate(0, -0.5px); }
+  100% { transform: rotate(-0.7deg) translate(0,  0); }
+}
+.jiggle {
+  animation: jiggle 280ms infinite;
+  transform-origin: center;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .jiggle { animation: none; }
+}
+
 .scroll-hide::-webkit-scrollbar {
   display: none;
 }
