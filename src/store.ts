@@ -102,8 +102,10 @@ interface TrackerState {
   resetAll: () => void;
   updateSettings: (s: Partial<Settings>) => void;
   moveWidget: (id: string, dir: -1 | 1) => void;
+  reorderWidgets: (fromId: string, toId: string) => void;
   toggleWidgetVisible: (id: string) => void;
   setWidgetSpan: (id: string, span: 1 | 2) => void;
+  toggleWidgetSpan: (id: string) => void;
 }
 
 function vibrate(ms = 10) {
@@ -222,6 +224,18 @@ export const useStore = create<TrackerState>()(
           return { settings: { ...s.settings, widgets: ws } };
         }),
 
+      reorderWidgets: (fromId, toId) =>
+        set((s) => {
+          if (fromId === toId) return s;
+          const ws = [...s.settings.widgets];
+          const fromIdx = ws.findIndex((w) => w.id === fromId);
+          const toIdx = ws.findIndex((w) => w.id === toId);
+          if (fromIdx < 0 || toIdx < 0) return s;
+          const [moved] = ws.splice(fromIdx, 1);
+          ws.splice(toIdx, 0, moved);
+          return { settings: { ...s.settings, widgets: ws } };
+        }),
+
       toggleWidgetVisible: (id) =>
         set((s) => ({
           settings: {
@@ -241,6 +255,18 @@ export const useStore = create<TrackerState>()(
             ),
           },
         })),
+
+      toggleWidgetSpan: (id) => {
+        vibrate(10);
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            widgets: s.settings.widgets.map((w) =>
+              w.id === id ? { ...w, colSpan: w.colSpan === 1 ? 2 : 1 } : w
+            ),
+          },
+        }));
+      },
     }),
     {
       name: 'mtg-tracker-storage',
