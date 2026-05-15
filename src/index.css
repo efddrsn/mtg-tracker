@@ -92,6 +92,18 @@ body {
   .jiggle { animation: none; }
 }
 
+.grid-guide-cell {
+  border: 1.5px dashed rgba(99, 102, 241, 0.35);
+  background:
+    linear-gradient(rgba(99, 102, 241, 0.04), rgba(99, 102, 241, 0.04)),
+    radial-gradient(circle at center, rgba(99, 102, 241, 0.10) 0%, transparent 70%);
+  transition: background 120ms, border-color 120ms;
+}
+.grid-guide-cell:hover {
+  border-color: rgba(99, 102, 241, 0.7);
+  background: rgba(99, 102, 241, 0.12);
+}
+
 .scroll-hide::-webkit-scrollbar {
   display: none;
 }
