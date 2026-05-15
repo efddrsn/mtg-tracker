@@ -6,6 +6,37 @@ import { PhaseTracker } from '../components/PhaseTracker';
 const LONG_PRESS_MS = 450;
 const PRESS_CANCEL_PX = 8;
 const DRAG_TAP_PX = 6;
+const GUIDE_EXTRA_ROWS = 2;
+
+interface DragState {
+  id: string;
+  width: number;
+  height: number;
+  pointerX: number;
+  pointerY: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+interface PressInfo {
+  id: string;
+  x: number;
+  y: number;
+  rect: DOMRect;
+  offsetX: number;
+  offsetY: number;
+}
+
+function computeGridRows(widgets: Widget[], columns: number): number {
+  let used = 0;
+  for (const w of widgets) {
+    const span = Math.min(w.colSpan, columns);
+    const col = used % columns;
+    if (col + span > columns) used += columns - col;
+    used += span;
+  }
+  return Math.ceil(used / columns);
+}
 
 export function Tracker() {
   const {
@@ -13,19 +44,16 @@ export function Tracker() {
     incMana, decMana, resetMana,
     incStorm, decStorm, resetStorm,
     incCounter, decCounter, resetCounter,
-    reorderWidgets, toggleWidgetSpan,
+    reorderWidgets, moveWidgetToEnd, toggleWidgetSpan,
   } = useStore();
 
   const [editMode, setEditMode] = useState(false);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragDelta, setDragDelta] = useState({ x: 0, y: 0 });
+  const [drag, setDrag] = useState<DragState | null>(null);
 
+  const dragRef = useRef<DragState | null>(null);
   const pressTimerRef = useRef<number | null>(null);
-  const pressStartRef = useRef<{ x: number; y: number } | null>(null);
-  const pressedIdRef = useRef<string | null>(null);
+  const pressInfoRef = useRef<PressInfo | null>(null);
   const wasEditOnPressRef = useRef(false);
-
-  const draggingIdRef = useRef<string | null>(null);
   const hasMovedRef = useRef(false);
   const lastHoverIdRef = useRef<string | null>(null);
 
@@ -36,6 +64,9 @@ export function Tracker() {
     return true;
   });
 
+  const filledRows = computeGridRows(visibleWidgets, settings.columns);
+  const guideRows = editMode ? Math.max(filledRows + GUIDE_EXTRA_ROWS, 4) : 0;
+
   const cancelPressTimer = () => {
     if (pressTimerRef.current != null) {
       clearTimeout(pressTimerRef.current);
@@ -43,46 +74,62 @@ export function Tracker() {
     }
   };
 
-  const beginDrag = (id: string) => {
+  const startDrag = (id: string) => {
+    const info = pressInfoRef.current;
+    if (!info || info.id !== id) return;
     try { navigator.vibrate?.(25); } catch { /* noop */ }
-    draggingIdRef.current = id;
+    const next: DragState = {
+      id,
+      width: info.rect.width,
+      height: info.rect.height,
+      pointerX: info.x,
+      pointerY: info.y,
+      offsetX: info.offsetX,
+      offsetY: info.offsetY,
+    };
+    dragRef.current = next;
     hasMovedRef.current = false;
     lastHoverIdRef.current = id;
-    setDraggingId(id);
-    setDragDelta({ x: 0, y: 0 });
+    setDrag(next);
   };
 
   const onWidgetPointerDown = (e: React.PointerEvent<HTMLDivElement>, widget: Widget) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    pressStartRef.current = { x: e.clientX, y: e.clientY };
-    pressedIdRef.current = widget.id;
+    const rect = e.currentTarget.getBoundingClientRect();
+    pressInfoRef.current = {
+      id: widget.id,
+      x: e.clientX,
+      y: e.clientY,
+      rect,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+    };
     wasEditOnPressRef.current = editMode;
     cancelPressTimer();
 
     if (editMode) {
-      beginDrag(widget.id);
+      startDrag(widget.id);
     } else {
       pressTimerRef.current = window.setTimeout(() => {
         pressTimerRef.current = null;
-        if (pressedIdRef.current !== widget.id) return;
+        if (!pressInfoRef.current || pressInfoRef.current.id !== widget.id) return;
         setEditMode(true);
-        beginDrag(widget.id);
+        startDrag(widget.id);
       }, LONG_PRESS_MS);
     }
   };
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
-      const start = pressStartRef.current;
-      if (!start) return;
-      const dx = e.clientX - start.x;
-      const dy = e.clientY - start.y;
+      const press = pressInfoRef.current;
+      if (!press) return;
+      const dx = e.clientX - press.x;
+      const dy = e.clientY - press.y;
 
-      if (draggingIdRef.current == null) {
+      if (!dragRef.current) {
         if (Math.abs(dx) > PRESS_CANCEL_PX || Math.abs(dy) > PRESS_CANCEL_PX) {
           cancelPressTimer();
-          pressedIdRef.current = null;
-          pressStartRef.current = null;
+          pressInfoRef.current = null;
         }
         return;
       }
@@ -91,45 +138,59 @@ export function Tracker() {
         hasMovedRef.current = true;
       }
 
-      setDragDelta({ x: dx, y: dy });
+      const next = { ...dragRef.current, pointerX: e.clientX, pointerY: e.clientY };
+      dragRef.current = next;
+      setDrag(next);
 
       const stack = document.elementsFromPoint(e.clientX, e.clientY);
+      let hitWidgetId: string | null = null;
+      let hitEmptyGuide = false;
       for (const el of stack) {
         const node = el as HTMLElement;
-        const host = node.closest?.('[data-widget-id]') as HTMLElement | null;
-        if (!host) continue;
-        const wid = host.dataset.widgetId;
-        if (!wid) continue;
-        if (wid === draggingIdRef.current) {
-          lastHoverIdRef.current = wid;
+        const widgetHost = node.closest?.('[data-widget-id]') as HTMLElement | null;
+        if (widgetHost) {
+          hitWidgetId = widgetHost.dataset.widgetId || null;
           break;
         }
-        if (wid !== lastHoverIdRef.current) {
-          reorderWidgets(draggingIdRef.current, wid);
-          lastHoverIdRef.current = wid;
+        if (node.dataset?.guideCell != null) {
+          hitEmptyGuide = true;
+          break;
+        }
+      }
+
+      const dragId = dragRef.current.id;
+      if (hitWidgetId && hitWidgetId !== dragId) {
+        if (hitWidgetId !== lastHoverIdRef.current) {
+          reorderWidgets(dragId, hitWidgetId);
+          lastHoverIdRef.current = hitWidgetId;
           try { navigator.vibrate?.(8); } catch { /* noop */ }
         }
-        break;
+      } else if (hitEmptyGuide) {
+        if (lastHoverIdRef.current !== '__end__') {
+          moveWidgetToEnd(dragId);
+          lastHoverIdRef.current = '__end__';
+          try { navigator.vibrate?.(8); } catch { /* noop */ }
+        }
+      } else if (hitWidgetId === dragId) {
+        lastHoverIdRef.current = dragId;
       }
     };
 
     const onUp = () => {
       cancelPressTimer();
-      const draggedId = draggingIdRef.current;
+      const dragging = dragRef.current;
       const moved = hasMovedRef.current;
       const wasEditOnPress = wasEditOnPressRef.current;
 
-      pressedIdRef.current = null;
-      pressStartRef.current = null;
-      draggingIdRef.current = null;
+      pressInfoRef.current = null;
+      dragRef.current = null;
       hasMovedRef.current = false;
       lastHoverIdRef.current = null;
 
-      if (draggedId != null) {
-        setDraggingId(null);
-        setDragDelta({ x: 0, y: 0 });
+      if (dragging) {
+        setDrag(null);
         if (!moved && wasEditOnPress) {
-          toggleWidgetSpan(draggedId);
+          toggleWidgetSpan(dragging.id);
         }
       }
     };
@@ -142,7 +203,7 @@ export function Tracker() {
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
     };
-  }, [reorderWidgets, toggleWidgetSpan]);
+  }, [reorderWidgets, moveWidgetToEnd, toggleWidgetSpan]);
 
   useEffect(() => {
     if (!editMode) return;
@@ -155,9 +216,13 @@ export function Tracker() {
 
   const exitOnBackdrop = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!editMode) return;
-    if (draggingIdRef.current) return;
+    if (dragRef.current) return;
     const target = e.target as HTMLElement;
-    if (!target.closest('[data-widget-id]') && !target.closest('[data-edit-toolbar]')) {
+    if (
+      !target.closest('[data-widget-id]') &&
+      !target.closest('[data-edit-toolbar]') &&
+      !target.closest('[data-guide-cell]')
+    ) {
       setEditMode(false);
     }
   };
@@ -218,6 +283,11 @@ export function Tracker() {
     return null;
   };
 
+  const draggedWidget = drag ? visibleWidgets.find((w) => w.id === drag.id) : null;
+  const draggedSpan = draggedWidget
+    ? (Math.min(draggedWidget.colSpan, settings.columns) as 1 | 2)
+    : 1;
+
   return (
     <div
       className="flex-1 overflow-y-auto scroll-hide px-2 pb-4"
@@ -226,11 +296,11 @@ export function Tracker() {
       {editMode && (
         <div
           data-edit-toolbar
-          className="sticky top-0 z-30 -mx-2 px-3 py-2 mb-1 flex items-center justify-between
-                     bg-black/40 backdrop-blur-md border-b border-border"
+          className="sticky top-0 z-30 -mx-2 px-3 py-2 mb-2 flex items-center justify-between
+                     bg-black/60 backdrop-blur-md border-b border-accent/30"
         >
-          <span className="text-[11px] uppercase tracking-wider font-semibold text-text-secondary">
-            Drag to reorder · Tap to resize
+          <span className="text-[11px] uppercase tracking-wider font-semibold text-accent">
+            Drag to reorder · Tap to resize · Drop in empty cell
           </span>
           <button
             data-edit-toolbar
@@ -242,63 +312,100 @@ export function Tracker() {
           </button>
         </div>
       )}
-      <div
-        className="grid gap-2"
-        style={{ gridTemplateColumns: `repeat(${settings.columns}, 1fr)` }}
-      >
-        {visibleWidgets.map((widget, idx) => {
-          const span = Math.min(widget.colSpan, settings.columns) as 1 | 2;
-          const isDragging = draggingId === widget.id;
-          const jiggle = editMode && !isDragging;
 
-          const style: React.CSSProperties = {
-            gridColumn: `span ${span}`,
-            touchAction: editMode ? 'none' : undefined,
-          };
-          if (isDragging) {
-            style.transform = `translate(${dragDelta.x}px, ${dragDelta.y}px) scale(1.06)`;
-            style.zIndex = 40;
-            style.transition = 'none';
-            style.filter = 'drop-shadow(0 12px 24px rgba(0,0,0,0.55))';
-          } else if (editMode) {
-            style.animationDelay = `${(idx % 2) * -0.09}s`;
-          }
-
-          return (
-            <div
-              key={widget.id}
-              data-widget-id={widget.id}
-              className={`relative ${jiggle ? 'jiggle' : ''}`}
-              style={style}
-              onPointerDown={(e) => onWidgetPointerDown(e, widget)}
-            >
+      <div className="relative">
+        {/* Grid guide cells - shows the underlying grid in edit mode */}
+        {editMode && guideRows > 0 && (
+          <div
+            className="absolute inset-x-0 top-0 grid gap-2 pointer-events-none"
+            style={{
+              gridTemplateColumns: `repeat(${settings.columns}, 1fr)`,
+              gridAutoRows: 'minmax(5.5rem, 1fr)',
+              height: `calc(${guideRows} * 5.5rem + ${guideRows - 1} * 0.5rem)`,
+            }}
+            aria-hidden
+          >
+            {Array.from({ length: guideRows * settings.columns }).map((_, i) => (
               <div
-                className="h-full"
-                style={{ pointerEvents: editMode ? 'none' : undefined }}
+                key={i}
+                data-guide-cell="1"
+                className="grid-guide-cell rounded-2xl pointer-events-auto"
+              />
+            ))}
+          </div>
+        )}
+
+        <div
+          className="grid gap-2 relative"
+          style={{ gridTemplateColumns: `repeat(${settings.columns}, 1fr)` }}
+        >
+          {visibleWidgets.map((widget, idx) => {
+            const span = Math.min(widget.colSpan, settings.columns) as 1 | 2;
+            const isDragging = drag?.id === widget.id;
+            const jiggle = editMode && !isDragging;
+
+            const style: React.CSSProperties = {
+              gridColumn: `span ${span}`,
+              touchAction: editMode ? 'none' : undefined,
+            };
+            if (jiggle) {
+              style.animationDelay = `${(idx % 2) * -0.09}s`;
+            }
+            if (isDragging) {
+              style.opacity = 0.25;
+              style.transition = 'opacity 120ms';
+            }
+
+            return (
+              <div
+                key={widget.id}
+                data-widget-id={widget.id}
+                className={`relative ${jiggle ? 'jiggle' : ''}`}
+                style={style}
+                onPointerDown={(e) => onWidgetPointerDown(e, widget)}
               >
-                {renderContent(widget, span)}
-              </div>
-              {editMode && (
                 <div
-                  className="absolute inset-0 rounded-2xl pointer-events-none ring-2 ring-accent/40"
-                  aria-hidden
-                />
-              )}
-              {editMode && (
-                <div
-                  className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-surface
-                             border border-border flex items-center justify-center
-                             text-[10px] font-bold text-accent pointer-events-none"
-                  aria-hidden
-                  title={span === 2 ? 'Wide' : 'Compact'}
+                  className="h-full"
+                  style={{ pointerEvents: editMode ? 'none' : undefined }}
                 >
-                  {span === 2 ? '⇔' : '·'}
+                  {renderContent(widget, span)}
                 </div>
-              )}
-            </div>
-          );
-        })}
+                {editMode && !isDragging && (
+                  <div
+                    className="absolute inset-0 rounded-2xl pointer-events-none
+                               ring-2 ring-accent/70 ring-offset-0"
+                    aria-hidden
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
+
+      {/* Floating ghost that follows the pointer while dragging */}
+      {drag && draggedWidget && (
+        <div
+          style={{
+            position: 'fixed',
+            left: drag.pointerX - drag.offsetX,
+            top: drag.pointerY - drag.offsetY,
+            width: drag.width,
+            height: drag.height,
+            pointerEvents: 'none',
+            zIndex: 60,
+            transform: 'scale(1.06)',
+            transformOrigin: 'center',
+            filter: 'drop-shadow(0 18px 36px rgba(0,0,0,0.6))',
+            willChange: 'left, top',
+          }}
+          aria-hidden
+        >
+          <div className="h-full opacity-95 pointer-events-none">
+            {renderContent(draggedWidget, draggedSpan)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

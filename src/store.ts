@@ -103,6 +103,7 @@ interface TrackerState {
   updateSettings: (s: Partial<Settings>) => void;
   moveWidget: (id: string, dir: -1 | 1) => void;
   reorderWidgets: (fromId: string, toId: string) => void;
+  moveWidgetToEnd: (id: string) => void;
   toggleWidgetVisible: (id: string) => void;
   setWidgetSpan: (id: string, span: 1 | 2) => void;
   toggleWidgetSpan: (id: string) => void;
@@ -233,6 +234,16 @@ export const useStore = create<TrackerState>()(
           if (fromIdx < 0 || toIdx < 0) return s;
           const [moved] = ws.splice(fromIdx, 1);
           ws.splice(toIdx, 0, moved);
+          return { settings: { ...s.settings, widgets: ws } };
+        }),
+
+      moveWidgetToEnd: (id) =>
+        set((s) => {
+          const ws = [...s.settings.widgets];
+          const idx = ws.findIndex((w) => w.id === id);
+          if (idx < 0 || idx === ws.length - 1) return s;
+          const [moved] = ws.splice(idx, 1);
+          ws.push(moved);
           return { settings: { ...s.settings, widgets: ws } };
         }),
 
