@@ -168,10 +168,10 @@ export function Tracker() {
         if (!host) continue;
         const wid = host.dataset.widgetId;
         if (!wid) continue;
-        if (wid === draggingIdRef.current) {
-          lastHoverIdRef.current = wid;
-          break;
-        }
+        // The dragged widget itself is rendered on top with a transform, so
+        // it sits under the pointer for the entire drag. Skip past it so we
+        // can detect the widget the user is actually hovering over.
+        if (wid === draggingIdRef.current) continue;
         if (wid !== lastHoverIdRef.current) {
           reorderWidgets(draggingIdRef.current, wid);
           lastHoverIdRef.current = wid;
