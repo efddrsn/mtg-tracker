@@ -3,15 +3,27 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 export function Header() {
   const resetAll = useStore((s) => s.resetAll);
+  const turn = useStore((s) => s.turn);
   const navigate = useNavigate();
   const location = useLocation();
   const isSettings = location.pathname === '/settings';
 
   return (
-    <header className="flex items-center justify-between px-3 py-2 shrink-0">
-      <h1 className="text-base font-bold tracking-wide text-text-primary">
-        MTG Tracker
-      </h1>
+    <header className="app-header flex items-center justify-between px-3 py-2 shrink-0 gap-2">
+      <div className="flex items-center gap-2 min-w-0">
+        <h1 className="text-base font-bold tracking-wide text-text-primary truncate">
+          MTG Tracker
+        </h1>
+        {!isSettings && (
+          <span
+            className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full
+                       bg-accent/15 text-accent tabular-nums"
+            aria-label={`Turn ${turn}`}
+          >
+            T{turn}
+          </span>
+        )}
+      </div>
       <div className="flex items-center gap-1">
         {!isSettings && (
           <button
