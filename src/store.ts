@@ -39,9 +39,14 @@ export interface Widget {
   type: WidgetType;
   manaColor?: ManaColor;
   counterId?: string;
-  colSpan: 1 | 2;
+  /** column span 1..settings.columns */
+  colSpan: number;
+  /** row span (>=1) */
+  rowSpan: number;
   visible: boolean;
 }
+
+export const MAX_ROW_SPAN = 4;
 
 export interface Settings {
   columns: 2 | 3 | 4;
@@ -50,18 +55,20 @@ export interface Settings {
   showPhaseTracker: boolean;
   newTurnResetsMana: boolean;
   newTurnResetsStorm: boolean;
+  /** keep the screen awake while the tracker is open */
+  keepAwake: boolean;
 }
 
 function createDefaultWidgets(): Widget[] {
   return [
-    { id: 'phase', type: 'phase', colSpan: 2, visible: true },
-    { id: 'storm', type: 'storm', colSpan: 1, visible: true },
-    { id: 'mana-W', type: 'mana', manaColor: 'W', colSpan: 1, visible: true },
-    { id: 'mana-U', type: 'mana', manaColor: 'U', colSpan: 1, visible: true },
-    { id: 'mana-B', type: 'mana', manaColor: 'B', colSpan: 1, visible: true },
-    { id: 'mana-R', type: 'mana', manaColor: 'R', colSpan: 1, visible: true },
-    { id: 'mana-G', type: 'mana', manaColor: 'G', colSpan: 1, visible: true },
-    { id: 'mana-C', type: 'mana', manaColor: 'C', colSpan: 1, visible: false },
+    { id: 'phase',  type: 'phase',  colSpan: 2, rowSpan: 1, visible: true },
+    { id: 'storm',  type: 'storm',  colSpan: 1, rowSpan: 1, visible: true },
+    { id: 'mana-W', type: 'mana', manaColor: 'W', colSpan: 1, rowSpan: 1, visible: true },
+    { id: 'mana-U', type: 'mana', manaColor: 'U', colSpan: 1, rowSpan: 1, visible: true },
+    { id: 'mana-B', type: 'mana', manaColor: 'B', colSpan: 1, rowSpan: 1, visible: true },
+    { id: 'mana-R', type: 'mana', manaColor: 'R', colSpan: 1, rowSpan: 1, visible: true },
+    { id: 'mana-G', type: 'mana', manaColor: 'G', colSpan: 1, rowSpan: 1, visible: true },
+    { id: 'mana-C', type: 'mana', manaColor: 'C', colSpan: 1, rowSpan: 1, visible: false },
   ];
 }
 
@@ -73,7 +80,18 @@ function defaultSettings(): Settings {
     showPhaseTracker: true,
     newTurnResetsMana: true,
     newTurnResetsStorm: true,
+    keepAwake: false,
   };
+}
+
+export function clampColSpan(span: number, columns: number): number {
+  if (!Number.isFinite(span) || span < 1) return 1;
+  return Math.min(columns, Math.max(1, Math.round(span)));
+}
+
+export function clampRowSpan(span: number): number {
+  if (!Number.isFinite(span) || span < 1) return 1;
+  return Math.min(MAX_ROW_SPAN, Math.max(1, Math.round(span)));
 }
 
 interface TrackerState {
@@ -104,8 +122,10 @@ interface TrackerState {
   moveWidget: (id: string, dir: -1 | 1) => void;
   reorderWidgets: (fromId: string, toId: string) => void;
   toggleWidgetVisible: (id: string) => void;
-  setWidgetSpan: (id: string, span: 1 | 2) => void;
-  toggleWidgetSpan: (id: string) => void;
+  setWidgetSize: (id: string, colSpan: number, rowSpan: number) => void;
+  setWidgetColSpan: (id: string, colSpan: number) => void;
+  setWidgetRowSpan: (id: string, rowSpan: number) => void;
+  cycleWidgetColSpan: (id: string) => void;
 }
 
 function vibrate(ms = 10) {
@@ -167,7 +187,7 @@ export const useStore = create<TrackerState>()(
             ...s.settings,
             widgets: [
               ...s.settings.widgets,
-              { id: `counter-${ts}`, type: 'counter' as const, counterId: cId, colSpan: 1 as const, visible: true },
+              { id: `counter-${ts}`, type: 'counter' as const, counterId: cId, colSpan: 1, rowSpan: 1, visible: true },
             ],
           },
         }));
@@ -211,7 +231,17 @@ export const useStore = create<TrackerState>()(
       },
 
       updateSettings: (partial) =>
-        set((s) => ({ settings: { ...s.settings, ...partial } })),
+        set((s) => {
+          const merged: Settings = { ...s.settings, ...partial };
+          // If columns shrank, clamp every widget's colSpan so nothing overflows.
+          if (partial.columns && partial.columns !== s.settings.columns) {
+            merged.widgets = merged.widgets.map((w) => ({
+              ...w,
+              colSpan: clampColSpan(w.colSpan, merged.columns),
+            }));
+          }
+          return { settings: merged };
+        }),
 
       moveWidget: (id, dir) =>
         set((s) => {
@@ -246,31 +276,80 @@ export const useStore = create<TrackerState>()(
           },
         })),
 
-      setWidgetSpan: (id, span) =>
+      setWidgetSize: (id, colSpan, rowSpan) =>
+        set((s) => {
+          const cs = clampColSpan(colSpan, s.settings.columns);
+          const rs = clampRowSpan(rowSpan);
+          let changed = false;
+          const widgets = s.settings.widgets.map((w) => {
+            if (w.id !== id) return w;
+            if (w.colSpan === cs && w.rowSpan === rs) return w;
+            changed = true;
+            return { ...w, colSpan: cs, rowSpan: rs };
+          });
+          if (!changed) return s;
+          return { settings: { ...s.settings, widgets } };
+        }),
+
+      setWidgetColSpan: (id, colSpan) =>
         set((s) => ({
           settings: {
             ...s.settings,
             widgets: s.settings.widgets.map((w) =>
-              w.id === id ? { ...w, colSpan: span } : w
+              w.id === id ? { ...w, colSpan: clampColSpan(colSpan, s.settings.columns) } : w
             ),
           },
         })),
 
-      toggleWidgetSpan: (id) => {
-        vibrate(10);
+      setWidgetRowSpan: (id, rowSpan) =>
         set((s) => ({
           settings: {
             ...s.settings,
             widgets: s.settings.widgets.map((w) =>
-              w.id === id ? { ...w, colSpan: w.colSpan === 1 ? 2 : 1 } : w
+              w.id === id ? { ...w, rowSpan: clampRowSpan(rowSpan) } : w
             ),
+          },
+        })),
+
+      cycleWidgetColSpan: (id) => {
+        vibrate(10);
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            widgets: s.settings.widgets.map((w) => {
+              if (w.id !== id) return w;
+              const next = w.colSpan >= s.settings.columns ? 1 : w.colSpan + 1;
+              return { ...w, colSpan: next };
+            }),
           },
         }));
       },
     }),
     {
       name: 'mtg-tracker-storage',
-      version: 1,
+      version: 2,
+      migrate: (persistedState, version) => {
+        const state = persistedState as Partial<TrackerState> | undefined;
+        if (!state) return persistedState as unknown as TrackerState;
+        if (version < 2) {
+          const settings = state.settings as Partial<Settings> | undefined;
+          if (settings?.widgets) {
+            settings.widgets = settings.widgets.map((w) => ({
+              ...w,
+              colSpan: typeof w.colSpan === 'number' ? w.colSpan : 1,
+              // Phase tracker reads better at 2 rows tall, so upgrade existing
+              // users to the new spacier default while keeping everything else.
+              rowSpan: typeof (w as Widget).rowSpan === 'number'
+                ? (w as Widget).rowSpan
+                : 1,
+            })) as Widget[];
+          }
+          if (settings && typeof settings.keepAwake !== 'boolean') {
+            settings.keepAwake = false;
+          }
+        }
+        return state as TrackerState;
+      },
     }
   )
 );
