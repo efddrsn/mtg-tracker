@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { useStore, MANA_INFO, type ManaColor, type Widget } from '../store';
+import {
+  useStore, MANA_INFO, clampColSpan, clampRowSpan,
+  type ManaColor, type Widget,
+} from '../store';
 import { CounterWidget } from '../components/CounterWidget';
 import { PhaseTracker } from '../components/PhaseTracker';
 
 const LONG_PRESS_MS = 450;
 const PRESS_CANCEL_PX = 8;
 const DRAG_TAP_PX = 6;
+const GRID_GAP_PX = 8;
 
 export function Tracker() {
   const {
@@ -13,12 +17,15 @@ export function Tracker() {
     incMana, decMana, resetMana,
     incStorm, decStorm, resetStorm,
     incCounter, decCounter, resetCounter,
-    reorderWidgets, toggleWidgetSpan,
+    reorderWidgets, cycleWidgetColSpan, setWidgetSize,
   } = useStore();
 
   const [editMode, setEditMode] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragDelta, setDragDelta] = useState({ x: 0, y: 0 });
+  const [resizingId, setResizingId] = useState<string | null>(null);
+
+  const gridRef = useRef<HTMLDivElement | null>(null);
 
   const pressTimerRef = useRef<number | null>(null);
   const pressStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -28,6 +35,18 @@ export function Tracker() {
   const draggingIdRef = useRef<string | null>(null);
   const hasMovedRef = useRef(false);
   const lastHoverIdRef = useRef<string | null>(null);
+
+  const resizeRef = useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    startCol: number;
+    startRow: number;
+    cellW: number;
+    rowH: number;
+    lastCol: number;
+    lastRow: number;
+  } | null>(null);
 
   const visibleWidgets = settings.widgets.filter((w) => {
     if (!w.visible) return false;
@@ -52,8 +71,40 @@ export function Tracker() {
     setDragDelta({ x: 0, y: 0 });
   };
 
+  const onResizeHandleDown = (e: React.PointerEvent<HTMLDivElement>, widget: Widget) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const grid = gridRef.current;
+    if (!grid) return;
+
+    cancelPressTimer();
+    pressedIdRef.current = null;
+    pressStartRef.current = null;
+
+    const rowVar = getComputedStyle(grid).getPropertyValue('--row-h').trim();
+    const rowH = parseFloat(rowVar) || 76;
+    const cellW = (grid.clientWidth - GRID_GAP_PX * (settings.columns - 1)) / settings.columns;
+
+    resizeRef.current = {
+      id: widget.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      startCol: widget.colSpan,
+      startRow: widget.rowSpan,
+      cellW: cellW + GRID_GAP_PX,
+      rowH: rowH + GRID_GAP_PX,
+      lastCol: widget.colSpan,
+      lastRow: widget.rowSpan,
+    };
+    setResizingId(widget.id);
+    try { (e.target as Element).setPointerCapture?.(e.pointerId); } catch { /* noop */ }
+    try { navigator.vibrate?.(20); } catch { /* noop */ }
+  };
+
   const onWidgetPointerDown = (e: React.PointerEvent<HTMLDivElement>, widget: Widget) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('[data-resize-handle]')) return;
     pressStartRef.current = { x: e.clientX, y: e.clientY };
     pressedIdRef.current = widget.id;
     wasEditOnPressRef.current = editMode;
@@ -73,6 +124,23 @@ export function Tracker() {
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
+      // ── resizing flow ─────────────────────────────────────────────
+      const rs = resizeRef.current;
+      if (rs) {
+        const dx = e.clientX - rs.startX;
+        const dy = e.clientY - rs.startY;
+        const newCol = clampColSpan(rs.startCol + Math.round(dx / rs.cellW), settings.columns);
+        const newRow = clampRowSpan(rs.startRow + Math.round(dy / rs.rowH));
+        if (newCol !== rs.lastCol || newRow !== rs.lastRow) {
+          rs.lastCol = newCol;
+          rs.lastRow = newRow;
+          setWidgetSize(rs.id, newCol, newRow);
+          try { navigator.vibrate?.(6); } catch { /* noop */ }
+        }
+        return;
+      }
+
+      // ── reorder/long-press flow ──────────────────────────────────
       const start = pressStartRef.current;
       if (!start) return;
       const dx = e.clientX - start.x;
@@ -100,10 +168,10 @@ export function Tracker() {
         if (!host) continue;
         const wid = host.dataset.widgetId;
         if (!wid) continue;
-        if (wid === draggingIdRef.current) {
-          lastHoverIdRef.current = wid;
-          break;
-        }
+        // The dragged widget itself is rendered on top with a transform, so
+        // it sits under the pointer for the entire drag. Skip past it so we
+        // can detect the widget the user is actually hovering over.
+        if (wid === draggingIdRef.current) continue;
         if (wid !== lastHoverIdRef.current) {
           reorderWidgets(draggingIdRef.current, wid);
           lastHoverIdRef.current = wid;
@@ -114,6 +182,13 @@ export function Tracker() {
     };
 
     const onUp = () => {
+      if (resizeRef.current) {
+        resizeRef.current = null;
+        setResizingId(null);
+        try { navigator.vibrate?.(15); } catch { /* noop */ }
+        return;
+      }
+
       cancelPressTimer();
       const draggedId = draggingIdRef.current;
       const moved = hasMovedRef.current;
@@ -129,7 +204,7 @@ export function Tracker() {
         setDraggingId(null);
         setDragDelta({ x: 0, y: 0 });
         if (!moved && wasEditOnPress) {
-          toggleWidgetSpan(draggedId);
+          cycleWidgetColSpan(draggedId);
         }
       }
     };
@@ -142,7 +217,7 @@ export function Tracker() {
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
     };
-  }, [reorderWidgets, toggleWidgetSpan]);
+  }, [reorderWidgets, cycleWidgetColSpan, setWidgetSize, settings.columns]);
 
   useEffect(() => {
     if (!editMode) return;
@@ -155,16 +230,19 @@ export function Tracker() {
 
   const exitOnBackdrop = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!editMode) return;
-    if (draggingIdRef.current) return;
+    if (draggingIdRef.current || resizeRef.current) return;
     const target = e.target as HTMLElement;
-    if (!target.closest('[data-widget-id]') && !target.closest('[data-edit-toolbar]')) {
+    if (
+      !target.closest('[data-widget-id]') &&
+      !target.closest('[data-edit-toolbar]')
+    ) {
       setEditMode(false);
     }
   };
 
-  const renderContent = (widget: Widget, span: 1 | 2) => {
+  const renderContent = (widget: Widget, span: number, rows: number) => {
     if (widget.type === 'phase') {
-      return <PhaseTracker />;
+      return <PhaseTracker rowSpan={rows} colSpan={span} />;
     }
     if (widget.type === 'storm') {
       return (
@@ -177,7 +255,7 @@ export function Tracker() {
           onDec={decStorm}
           onReset={resetStorm}
           colSpan={span}
-          columns={settings.columns}
+          rowSpan={rows}
         />
       );
     }
@@ -195,7 +273,7 @@ export function Tracker() {
           onDec={() => decMana(color)}
           onReset={() => resetMana(color)}
           colSpan={span}
-          columns={settings.columns}
+          rowSpan={rows}
         />
       );
     }
@@ -211,7 +289,7 @@ export function Tracker() {
           onDec={() => decCounter(counter.id)}
           onReset={() => resetCounter(counter.id)}
           colSpan={span}
-          columns={settings.columns}
+          rowSpan={rows}
         />
       );
     }
@@ -220,46 +298,57 @@ export function Tracker() {
 
   return (
     <div
-      className="flex-1 overflow-y-auto scroll-hide px-2 pb-4"
+      className="tracker-scroll flex-1 overflow-y-auto scroll-hide px-2 pb-4"
       onPointerDown={exitOnBackdrop}
     >
       {editMode && (
         <div
           data-edit-toolbar
           className="sticky top-0 z-30 -mx-2 px-3 py-2 mb-1 flex items-center justify-between
-                     bg-black/40 backdrop-blur-md border-b border-border"
+                     bg-black/50 backdrop-blur-md border-b border-border"
         >
-          <span className="text-[11px] uppercase tracking-wider font-semibold text-text-secondary">
-            Drag to reorder · Tap to resize
+          <span className="text-[11px] uppercase tracking-wider font-semibold text-text-secondary truncate pr-2">
+            Drag to reorder · Corner to resize
           </span>
           <button
             data-edit-toolbar
             onClick={() => setEditMode(false)}
             className="px-3 py-1.5 rounded-full bg-accent text-white text-xs font-bold
-                       hover:bg-accent-hover active:scale-95 transition-all"
+                       hover:bg-accent-hover active:scale-95 transition-all shrink-0"
           >
             Done
           </button>
         </div>
       )}
       <div
-        className="grid gap-2"
-        style={{ gridTemplateColumns: `repeat(${settings.columns}, 1fr)` }}
+        ref={gridRef}
+        className="tracker-grid grid gap-2"
+        style={{
+          gridTemplateColumns: `repeat(${settings.columns}, minmax(0, 1fr))`,
+          gridAutoRows: 'var(--row-h)',
+        }}
       >
         {visibleWidgets.map((widget, idx) => {
-          const span = Math.min(widget.colSpan, settings.columns) as 1 | 2;
+          const span = clampColSpan(widget.colSpan, settings.columns);
+          const rows = clampRowSpan(widget.rowSpan);
           const isDragging = draggingId === widget.id;
-          const jiggle = editMode && !isDragging;
+          const isResizing = resizingId === widget.id;
+          const jiggle = editMode && !isDragging && !isResizing;
 
           const style: React.CSSProperties = {
             gridColumn: `span ${span}`,
+            gridRow: `span ${rows}`,
             touchAction: editMode ? 'none' : undefined,
           };
           if (isDragging) {
-            style.transform = `translate(${dragDelta.x}px, ${dragDelta.y}px) scale(1.06)`;
+            style.transform = `translate(${dragDelta.x}px, ${dragDelta.y}px) scale(1.04)`;
             style.zIndex = 40;
             style.transition = 'none';
             style.filter = 'drop-shadow(0 12px 24px rgba(0,0,0,0.55))';
+          } else if (isResizing) {
+            style.zIndex = 35;
+            style.transition = 'none';
+            style.filter = 'drop-shadow(0 8px 18px rgba(0,0,0,0.5))';
           } else if (editMode) {
             style.animationDelay = `${(idx % 2) * -0.09}s`;
           }
@@ -276,7 +365,7 @@ export function Tracker() {
                 className="h-full"
                 style={{ pointerEvents: editMode ? 'none' : undefined }}
               >
-                {renderContent(widget, span)}
+                {renderContent(widget, span, rows)}
               </div>
               {editMode && (
                 <div
@@ -284,15 +373,32 @@ export function Tracker() {
                   aria-hidden
                 />
               )}
+              {editMode && (isResizing || isDragging) && (
+                <div
+                  className="absolute top-1 left-1 px-1.5 h-4 rounded-full bg-black/60
+                             backdrop-blur-sm flex items-center justify-center gap-0.5
+                             text-[10px] font-bold text-white pointer-events-none tabular-nums"
+                  aria-hidden
+                >
+                  {span}×{rows}
+                </div>
+              )}
               {editMode && (
                 <div
-                  className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-surface
-                             border border-border flex items-center justify-center
-                             text-[10px] font-bold text-accent pointer-events-none"
-                  aria-hidden
-                  title={span === 2 ? 'Wide' : 'Compact'}
+                  data-resize-handle
+                  className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full
+                             bg-accent text-white flex items-center justify-center
+                             shadow-lg shadow-accent/50 ring-2 ring-black/40
+                             cursor-se-resize"
+                  style={{ touchAction: 'none' }}
+                  onPointerDown={(e) => onResizeHandleDown(e, widget)}
+                  aria-label="Resize widget"
+                  role="button"
                 >
-                  {span === 2 ? '⇔' : '·'}
+                  <svg width="14" height="14" viewBox="0 0 12 12" aria-hidden>
+                    <path d="M11 1L1 11M11 5L5 11M11 9L9 11"
+                      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  </svg>
                 </div>
               )}
             </div>

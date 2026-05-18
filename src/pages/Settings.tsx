@@ -1,10 +1,14 @@
 import { useState } from 'react';
-import { useStore, ALL_MANA, MANA_INFO, type ManaColor } from '../store';
+import {
+  useStore, ALL_MANA, MANA_INFO, MAX_ROW_SPAN,
+  type ManaColor,
+} from '../store';
 
 export function Settings() {
   const {
     settings, counters,
-    updateSettings, moveWidget, toggleWidgetVisible, setWidgetSpan,
+    updateSettings, moveWidget, toggleWidgetVisible,
+    setWidgetColSpan, setWidgetRowSpan,
     addCounter, removeCounter, resetAll,
   } = useStore();
   const [newCounterName, setNewCounterName] = useState('');
@@ -44,6 +48,9 @@ export function Settings() {
             </button>
           ))}
         </div>
+        <p className="text-xs text-text-dim mt-2">
+          Tip: long-press a widget to enter edit mode, then drag the corner handle to resize cells freely.
+        </p>
       </section>
 
       {/* Mana Colors */}
@@ -76,7 +83,7 @@ export function Settings() {
       {/* Widget Layout */}
       <section>
         <SectionTitle>Widget Layout</SectionTitle>
-        <p className="text-xs text-text-dim mb-2">Reorder, resize, and toggle visibility</p>
+        <p className="text-xs text-text-dim mb-2">Reorder, resize per cell, and toggle visibility</p>
         <div className="space-y-1.5">
           {settings.widgets.map((widget, idx) => {
             let label = '';
@@ -96,13 +103,13 @@ export function Settings() {
                 className={`flex items-center gap-2 px-3 py-2.5 rounded-xl transition-all
                   ${widget.visible ? 'bg-surface' : 'bg-surface/50 opacity-50'}`}
               >
-                {/* Reorder arrows */}
                 <div className="flex flex-col gap-0.5">
                   <button
                     className="w-6 h-5 flex items-center justify-center rounded text-text-dim
                                hover:text-text-primary hover:bg-white/5 text-xs disabled:opacity-20"
                     disabled={idx === 0}
                     onClick={() => moveWidget(widget.id, -1)}
+                    aria-label="Move up"
                   >
                     ▲
                   </button>
@@ -111,27 +118,29 @@ export function Settings() {
                                hover:text-text-primary hover:bg-white/5 text-xs disabled:opacity-20"
                     disabled={idx === settings.widgets.length - 1}
                     onClick={() => moveWidget(widget.id, 1)}
+                    aria-label="Move down"
                   >
                     ▼
                   </button>
                 </div>
 
-                {/* Label */}
                 <span className="flex-1 text-sm font-medium text-text-primary truncate">{label}</span>
 
-                {/* Span toggle */}
-                <button
-                  className={`px-2 py-1 rounded-lg text-[10px] font-bold tracking-wide
-                    ${widget.colSpan === 2
-                      ? 'bg-accent/20 text-accent'
-                      : 'bg-white/5 text-text-dim hover:bg-white/10'
-                    }`}
-                  onClick={() => setWidgetSpan(widget.id, widget.colSpan === 1 ? 2 : 1)}
-                >
-                  {widget.colSpan === 2 ? 'WIDE' : '1 COL'}
-                </button>
+                <SpanStepper
+                  label="W"
+                  value={widget.colSpan}
+                  min={1}
+                  max={settings.columns}
+                  onChange={(v) => setWidgetColSpan(widget.id, v)}
+                />
+                <SpanStepper
+                  label="H"
+                  value={widget.rowSpan}
+                  min={1}
+                  max={MAX_ROW_SPAN}
+                  onChange={(v) => setWidgetRowSpan(widget.id, v)}
+                />
 
-                {/* Visibility toggle */}
                 <button
                   className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm
                     ${widget.visible
@@ -139,6 +148,7 @@ export function Settings() {
                       : 'bg-white/5 text-text-dim hover:bg-white/10'
                     }`}
                   onClick={() => toggleWidgetVisible(widget.id)}
+                  aria-label={widget.visible ? 'Hide' : 'Show'}
                 >
                   {widget.visible ? '👁' : '—'}
                 </button>
@@ -158,14 +168,14 @@ export function Settings() {
             onChange={(e) => setNewCounterName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAddCounter()}
             placeholder="Counter name..."
-            className="flex-1 px-3 py-2.5 rounded-xl bg-surface text-text-primary text-sm
+            className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-surface text-text-primary text-sm
                        placeholder:text-text-dim border border-border focus:border-accent
                        focus:outline-none transition-colors"
           />
           <button
             className="px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-bold
                        hover:bg-accent-hover active:scale-95 transition-all
-                       disabled:opacity-40 disabled:cursor-not-allowed"
+                       disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             disabled={!newCounterName.trim()}
             onClick={handleAddCounter}
           >
@@ -184,6 +194,7 @@ export function Settings() {
                   className="w-8 h-8 flex items-center justify-center rounded-lg text-danger
                              hover:bg-danger/10 text-xs font-bold"
                   onClick={() => removeCounter(c.id)}
+                  aria-label={`Remove ${c.name}`}
                 >
                   ✕
                 </button>
@@ -210,6 +221,18 @@ export function Settings() {
         </div>
       </section>
 
+      <section>
+        <SectionTitle>Display</SectionTitle>
+        <ToggleRow
+          label="Keep screen awake"
+          checked={settings.keepAwake}
+          onChange={(v) => updateSettings({ keepAwake: v })}
+        />
+        <p className="text-xs text-text-dim mt-2">
+          Prevents your phone from sleeping while the tracker is open.
+        </p>
+      </section>
+
       {/* Danger Zone */}
       <section>
         <SectionTitle>Reset</SectionTitle>
@@ -221,6 +244,41 @@ export function Settings() {
           Reset All Counters
         </button>
       </section>
+    </div>
+  );
+}
+
+function SpanStepper({
+  label, value, min, max, onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 bg-white/5 rounded-lg px-1 py-0.5">
+      <span className="text-[9px] font-bold text-text-dim uppercase pl-1 pr-0.5">{label}</span>
+      <button
+        className="w-5 h-6 flex items-center justify-center rounded text-text-secondary
+                   hover:bg-white/10 disabled:opacity-30 text-sm font-bold"
+        disabled={value <= min}
+        onClick={() => onChange(value - 1)}
+        aria-label={`Decrease ${label}`}
+      >
+        −
+      </button>
+      <span className="text-xs font-bold text-accent w-3 text-center tabular-nums">{value}</span>
+      <button
+        className="w-5 h-6 flex items-center justify-center rounded text-text-secondary
+                   hover:bg-white/10 disabled:opacity-30 text-sm font-bold"
+        disabled={value >= max}
+        onClick={() => onChange(value + 1)}
+        aria-label={`Increase ${label}`}
+      >
+        +
+      </button>
     </div>
   );
 }
