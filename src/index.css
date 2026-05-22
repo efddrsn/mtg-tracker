@@ -179,6 +179,16 @@ body {
   100% { transform: scale(1); }
 }
 
+@keyframes reset-flash-pop {
+  0%   { transform: scale(0.85); opacity: 0; }
+  20%  { transform: scale(1.05); opacity: 1; }
+  70%  { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0; }
+}
+.reset-flash > * {
+  animation: reset-flash-pop 600ms ease-out forwards;
+}
+
 /* Larger inputs on mobile to avoid iOS auto-zoom */
 input, button, select, textarea {
   font-size: 16px;
