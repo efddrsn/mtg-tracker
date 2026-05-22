@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import {
-  useStore, ALL_MANA, MANA_INFO, MAX_ROW_SPAN,
+  useStore, ALL_MANA, MANA_INFO,
   type ManaColor,
 } from '../store';
+import { ManaIcon, StormIcon, CounterIcon } from '../components/Symbols';
 
 export function Settings() {
   const {
     settings, counters,
-    updateSettings, moveWidget, toggleWidgetVisible,
-    setWidgetColSpan, setWidgetRowSpan,
+    updateSettings, toggleWidgetVisible,
     addCounter, removeCounter, resetAll,
   } = useStore();
   const [newCounterName, setNewCounterName] = useState('');
@@ -30,29 +30,6 @@ export function Settings() {
 
   return (
     <div className="flex-1 overflow-y-auto scroll-hide px-3 pb-8 space-y-5">
-      {/* Grid Columns */}
-      <section>
-        <SectionTitle>Grid Columns</SectionTitle>
-        <div className="flex gap-2">
-          {([2, 3, 4] as const).map((n) => (
-            <button
-              key={n}
-              className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all
-                ${settings.columns === n
-                  ? 'bg-accent text-white shadow-lg shadow-accent/25'
-                  : 'bg-surface text-text-secondary hover:bg-surface-hover'
-                }`}
-              onClick={() => updateSettings({ columns: n })}
-            >
-              {n} cols
-            </button>
-          ))}
-        </div>
-        <p className="text-xs text-text-dim mt-2">
-          Tip: long-press a widget to enter edit mode, then drag the corner handle to resize cells freely.
-        </p>
-      </section>
-
       {/* Mana Colors */}
       <section>
         <SectionTitle>Mana Colors</SectionTitle>
@@ -72,7 +49,7 @@ export function Settings() {
                 }}
                 onClick={() => toggleMana(color)}
               >
-                <span className="text-base">{info.symbol}</span>
+                <ManaIcon color={color} width="18" height="18" />
                 <span>{info.name}</span>
               </button>
             );
@@ -80,77 +57,48 @@ export function Settings() {
         </div>
       </section>
 
-      {/* Widget Layout */}
+      {/* Widget visibility */}
       <section>
-        <SectionTitle>Widget Layout</SectionTitle>
-        <p className="text-xs text-text-dim mb-2">Reorder, resize per cell, and toggle visibility</p>
+        <SectionTitle>Visible Trackers</SectionTitle>
+        <p className="text-xs text-text-dim mb-2">Long-press a tracker on the home screen to reorder or resize.</p>
         <div className="space-y-1.5">
-          {settings.widgets.map((widget, idx) => {
+          {settings.widgets.map((widget) => {
             let label = '';
-            if (widget.type === 'phase') label = '⏱ Phase Tracker';
-            else if (widget.type === 'storm') label = '⚡ Storm';
-            else if (widget.type === 'mana' && widget.manaColor) {
+            let icon: React.ReactNode = null;
+            if (widget.type === 'phase') {
+              label = 'Phase Tracker';
+              icon = <span className="text-text-secondary text-sm">◷</span>;
+            } else if (widget.type === 'storm') {
+              label = 'Storm';
+              icon = <StormIcon width="16" height="16" className="text-accent" />;
+            } else if (widget.type === 'mana' && widget.manaColor) {
               const info = MANA_INFO[widget.manaColor];
-              label = `${info.symbol} ${info.name} Mana`;
+              label = `${info.name} Mana`;
+              icon = <ManaIcon color={widget.manaColor} width="16" height="16" style={{ color: info.colorVar }} />;
             } else if (widget.type === 'counter' && widget.counterId) {
               const c = counters.find((cc) => cc.id === widget.counterId);
-              label = `🔢 ${c?.name || 'Counter'}`;
+              label = c?.name || 'Counter';
+              icon = <CounterIcon width="16" height="16" className="text-text-secondary" />;
             }
 
             return (
               <div
                 key={widget.id}
-                className={`flex items-center gap-2 px-3 py-2.5 rounded-xl transition-all
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all
                   ${widget.visible ? 'bg-surface' : 'bg-surface/50 opacity-50'}`}
               >
-                <div className="flex flex-col gap-0.5">
-                  <button
-                    className="w-6 h-5 flex items-center justify-center rounded text-text-dim
-                               hover:text-text-primary hover:bg-white/5 text-xs disabled:opacity-20"
-                    disabled={idx === 0}
-                    onClick={() => moveWidget(widget.id, -1)}
-                    aria-label="Move up"
-                  >
-                    ▲
-                  </button>
-                  <button
-                    className="w-6 h-5 flex items-center justify-center rounded text-text-dim
-                               hover:text-text-primary hover:bg-white/5 text-xs disabled:opacity-20"
-                    disabled={idx === settings.widgets.length - 1}
-                    onClick={() => moveWidget(widget.id, 1)}
-                    aria-label="Move down"
-                  >
-                    ▼
-                  </button>
-                </div>
-
+                <span className="w-5 h-5 flex items-center justify-center shrink-0">{icon}</span>
                 <span className="flex-1 text-sm font-medium text-text-primary truncate">{label}</span>
-
-                <SpanStepper
-                  label="W"
-                  value={widget.colSpan}
-                  min={1}
-                  max={settings.columns}
-                  onChange={(v) => setWidgetColSpan(widget.id, v)}
-                />
-                <SpanStepper
-                  label="H"
-                  value={widget.rowSpan}
-                  min={1}
-                  max={MAX_ROW_SPAN}
-                  onChange={(v) => setWidgetRowSpan(widget.id, v)}
-                />
-
                 <button
-                  className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm
-                    ${widget.visible
-                      ? 'bg-accent/15 text-accent'
-                      : 'bg-white/5 text-text-dim hover:bg-white/10'
-                    }`}
+                  className={`w-10 h-6 rounded-full transition-all flex items-center px-0.5
+                    ${widget.visible ? 'bg-accent' : 'bg-border'}`}
                   onClick={() => toggleWidgetVisible(widget.id)}
                   aria-label={widget.visible ? 'Hide' : 'Show'}
                 >
-                  {widget.visible ? '👁' : '—'}
+                  <div
+                    className={`w-5 h-5 rounded-full bg-white shadow transition-transform
+                      ${widget.visible ? 'translate-x-4' : 'translate-x-0'}`}
+                  />
                 </button>
               </div>
             );
@@ -189,7 +137,10 @@ export function Settings() {
                 key={c.id}
                 className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-surface"
               >
-                <span className="text-sm text-text-primary">🔢 {c.name}</span>
+                <div className="flex items-center gap-2">
+                  <CounterIcon width="16" height="16" className="text-text-secondary" />
+                  <span className="text-sm text-text-primary">{c.name}</span>
+                </div>
                 <button
                   className="w-8 h-8 flex items-center justify-center rounded-lg text-danger
                              hover:bg-danger/10 text-xs font-bold"
@@ -202,6 +153,21 @@ export function Settings() {
             ))}
           </div>
         )}
+      </section>
+
+      {/* Phase behavior */}
+      <section>
+        <SectionTitle>Phase Tracker</SectionTitle>
+        <div className="space-y-2">
+          <ToggleRow
+            label="Show sub-steps for current phase"
+            checked={settings.showSubSteps}
+            onChange={(v) => updateSettings({ showSubSteps: v })}
+          />
+        </div>
+        <p className="text-xs text-text-dim mt-2">
+          Walks through Combat (attackers, blockers, damage) and End (end step, cleanup) when stepping forward.
+        </p>
       </section>
 
       {/* Behavior */}
@@ -243,42 +209,10 @@ export function Settings() {
         >
           Reset All Counters
         </button>
+        <p className="text-xs text-text-dim mt-2">
+          Tip: swipe left or right across the tracker screen to reset.
+        </p>
       </section>
-    </div>
-  );
-}
-
-function SpanStepper({
-  label, value, min, max, onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div className="flex items-center gap-0.5 bg-white/5 rounded-lg px-1 py-0.5">
-      <span className="text-[9px] font-bold text-text-dim uppercase pl-1 pr-0.5">{label}</span>
-      <button
-        className="w-5 h-6 flex items-center justify-center rounded text-text-secondary
-                   hover:bg-white/10 disabled:opacity-30 text-sm font-bold"
-        disabled={value <= min}
-        onClick={() => onChange(value - 1)}
-        aria-label={`Decrease ${label}`}
-      >
-        −
-      </button>
-      <span className="text-xs font-bold text-accent w-3 text-center tabular-nums">{value}</span>
-      <button
-        className="w-5 h-6 flex items-center justify-center rounded text-text-secondary
-                   hover:bg-white/10 disabled:opacity-30 text-sm font-bold"
-        disabled={value >= max}
-        onClick={() => onChange(value + 1)}
-        aria-label={`Increase ${label}`}
-      >
-        +
-      </button>
     </div>
   );
 }
@@ -306,9 +240,9 @@ function ToggleRow({
                  hover:bg-surface-hover transition-colors"
       onClick={() => onChange(!checked)}
     >
-      <span className="text-sm text-text-primary">{label}</span>
+      <span className="text-sm text-text-primary text-left">{label}</span>
       <div
-        className={`w-10 h-6 rounded-full transition-all flex items-center px-0.5
+        className={`w-10 h-6 rounded-full transition-all flex items-center px-0.5 shrink-0
           ${checked ? 'bg-accent' : 'bg-border'}`}
       >
         <div

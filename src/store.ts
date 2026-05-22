@@ -5,13 +5,13 @@ export type ManaColor = 'W' | 'U' | 'B' | 'R' | 'G' | 'C';
 
 export const ALL_MANA: ManaColor[] = ['W', 'U', 'B', 'R', 'G', 'C'];
 
-export const MANA_INFO: Record<ManaColor, { name: string; symbol: string; colorVar: string; bgVar: string }> = {
-  W: { name: 'White', symbol: '☀', colorVar: 'var(--color-mana-w)', bgVar: 'var(--color-mana-w-bg)' },
-  U: { name: 'Blue', symbol: '💧', colorVar: 'var(--color-mana-u)', bgVar: 'var(--color-mana-u-bg)' },
-  B: { name: 'Black', symbol: '💀', colorVar: 'var(--color-mana-b)', bgVar: 'var(--color-mana-b-bg)' },
-  R: { name: 'Red', symbol: '🔥', colorVar: 'var(--color-mana-r)', bgVar: 'var(--color-mana-r-bg)' },
-  G: { name: 'Green', symbol: '🌲', colorVar: 'var(--color-mana-g)', bgVar: 'var(--color-mana-g-bg)' },
-  C: { name: 'Colorless', symbol: '◇', colorVar: 'var(--color-mana-c)', bgVar: 'var(--color-mana-c-bg)' },
+export const MANA_INFO: Record<ManaColor, { name: string; colorVar: string; bgVar: string }> = {
+  W: { name: 'White', colorVar: 'var(--color-mana-w)', bgVar: 'var(--color-mana-w-bg)' },
+  U: { name: 'Blue', colorVar: 'var(--color-mana-u)', bgVar: 'var(--color-mana-u-bg)' },
+  B: { name: 'Black', colorVar: 'var(--color-mana-b)', bgVar: 'var(--color-mana-b-bg)' },
+  R: { name: 'Red', colorVar: 'var(--color-mana-r)', bgVar: 'var(--color-mana-r-bg)' },
+  G: { name: 'Green', colorVar: 'var(--color-mana-g)', bgVar: 'var(--color-mana-g-bg)' },
+  C: { name: 'Colorless', colorVar: 'var(--color-mana-c)', bgVar: 'var(--color-mana-c-bg)' },
 };
 
 export const PHASES = [
@@ -26,6 +26,16 @@ export const PHASES = [
 
 export type Phase = (typeof PHASES)[number];
 
+export const SUB_STEPS: Record<Phase, readonly string[]> = {
+  'Untap': [],
+  'Upkeep': [],
+  'Draw': [],
+  'Main 1': [],
+  'Combat': ['Beginning', 'Attackers', 'Blockers', 'Damage', 'End of Combat'],
+  'Main 2': [],
+  'End': ['End Step', 'Cleanup'],
+};
+
 export interface CustomCounter {
   id: string;
   name: string;
@@ -39,9 +49,7 @@ export interface Widget {
   type: WidgetType;
   manaColor?: ManaColor;
   counterId?: string;
-  /** column span 1..settings.columns */
   colSpan: number;
-  /** row span (>=1) */
   rowSpan: number;
   visible: boolean;
 }
@@ -55,8 +63,8 @@ export interface Settings {
   showPhaseTracker: boolean;
   newTurnResetsMana: boolean;
   newTurnResetsStorm: boolean;
-  /** keep the screen awake while the tracker is open */
   keepAwake: boolean;
+  showSubSteps: boolean;
 }
 
 function createDefaultWidgets(): Widget[] {
@@ -81,6 +89,7 @@ function defaultSettings(): Settings {
     newTurnResetsMana: true,
     newTurnResetsStorm: true,
     keepAwake: false,
+    showSubSteps: false,
   };
 }
 
@@ -98,6 +107,7 @@ interface TrackerState {
   mana: Record<ManaColor, number>;
   storm: number;
   currentPhase: number;
+  subPhase: number;
   turn: number;
   counters: CustomCounter[];
   settings: Settings;
@@ -111,7 +121,10 @@ interface TrackerState {
   resetStorm: () => void;
   setPhase: (i: number) => void;
   nextPhase: () => void;
+  prevPhase: () => void;
+  setSubPhase: (i: number) => void;
   newTurn: () => void;
+  prevTurn: () => void;
   addCounter: (name: string) => void;
   removeCounter: (id: string) => void;
   incCounter: (id: string) => void;
@@ -138,6 +151,7 @@ export const useStore = create<TrackerState>()(
       mana: { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 },
       storm: 0,
       currentPhase: 0,
+      subPhase: 0,
       turn: 1,
       counters: [],
       settings: defaultSettings(),
@@ -163,19 +177,69 @@ export const useStore = create<TrackerState>()(
       decStorm: () => { vibrate(); set((s) => ({ storm: Math.max(0, s.storm - 1) })); },
       resetStorm: () => { vibrate(30); set({ storm: 0 }); },
 
-      setPhase: (i) => { vibrate(5); set({ currentPhase: i }); },
+      setPhase: (i) => { vibrate(5); set({ currentPhase: i, subPhase: 0 }); },
+
       nextPhase: () => {
         vibrate(5);
-        set((s) => ({ currentPhase: (s.currentPhase + 1) % PHASES.length }));
+        set((s) => {
+          const phase = PHASES[s.currentPhase];
+          const subs = SUB_STEPS[phase];
+          if (s.settings.showSubSteps && subs.length > 0 && s.subPhase < subs.length - 1) {
+            return { subPhase: s.subPhase + 1 };
+          }
+          // Past the last phase → start a new turn.
+          if (s.currentPhase >= PHASES.length - 1) {
+            vibrate(40);
+            return {
+              currentPhase: 0,
+              subPhase: 0,
+              turn: s.turn + 1,
+              ...(s.settings.newTurnResetsMana ? { mana: { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 } } : {}),
+              ...(s.settings.newTurnResetsStorm ? { storm: 0 } : {}),
+            };
+          }
+          return { currentPhase: s.currentPhase + 1, subPhase: 0 };
+        });
       },
+
+      prevPhase: () => {
+        vibrate(5);
+        set((s) => {
+          const phase = PHASES[s.currentPhase];
+          const subs = SUB_STEPS[phase];
+          if (s.settings.showSubSteps && subs.length > 0 && s.subPhase > 0) {
+            return { subPhase: s.subPhase - 1 };
+          }
+          if (s.currentPhase === 0) {
+            if (s.turn <= 1) return s;
+            const prevIdx = PHASES.length - 1;
+            const prevSubs = SUB_STEPS[PHASES[prevIdx]];
+            const lastSub = s.settings.showSubSteps && prevSubs.length > 0 ? prevSubs.length - 1 : 0;
+            return { currentPhase: prevIdx, subPhase: lastSub, turn: s.turn - 1 };
+          }
+          const prevIdx = s.currentPhase - 1;
+          const prevSubs = SUB_STEPS[PHASES[prevIdx]];
+          const lastSub = s.settings.showSubSteps && prevSubs.length > 0 ? prevSubs.length - 1 : 0;
+          return { currentPhase: prevIdx, subPhase: lastSub };
+        });
+      },
+
+      setSubPhase: (i) => { vibrate(5); set({ subPhase: Math.max(0, i) }); },
+
       newTurn: () => {
         vibrate(40);
         set((s) => ({
           currentPhase: 0,
+          subPhase: 0,
           turn: s.turn + 1,
           ...(s.settings.newTurnResetsMana ? { mana: { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 } } : {}),
           ...(s.settings.newTurnResetsStorm ? { storm: 0 } : {}),
         }));
+      },
+
+      prevTurn: () => {
+        vibrate(20);
+        set((s) => s.turn > 1 ? { turn: s.turn - 1, currentPhase: 0, subPhase: 0 } : s);
       },
 
       addCounter: (name) => {
@@ -225,6 +289,7 @@ export const useStore = create<TrackerState>()(
           mana: { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 },
           storm: 0,
           currentPhase: 0,
+          subPhase: 0,
           turn: 1,
           counters: [],
         });
@@ -233,7 +298,6 @@ export const useStore = create<TrackerState>()(
       updateSettings: (partial) =>
         set((s) => {
           const merged: Settings = { ...s.settings, ...partial };
-          // If columns shrank, clamp every widget's colSpan so nothing overflows.
           if (partial.columns && partial.columns !== s.settings.columns) {
             merged.widgets = merged.widgets.map((w) => ({
               ...w,
@@ -327,7 +391,7 @@ export const useStore = create<TrackerState>()(
     }),
     {
       name: 'mtg-tracker-storage',
-      version: 2,
+      version: 3,
       migrate: (persistedState, version) => {
         const state = persistedState as Partial<TrackerState> | undefined;
         if (!state) return persistedState as unknown as TrackerState;
@@ -337,8 +401,6 @@ export const useStore = create<TrackerState>()(
             settings.widgets = settings.widgets.map((w) => ({
               ...w,
               colSpan: typeof w.colSpan === 'number' ? w.colSpan : 1,
-              // Phase tracker reads better at 2 rows tall, so upgrade existing
-              // users to the new spacier default while keeping everything else.
               rowSpan: typeof (w as Widget).rowSpan === 'number'
                 ? (w as Widget).rowSpan
                 : 1,
@@ -346,6 +408,15 @@ export const useStore = create<TrackerState>()(
           }
           if (settings && typeof settings.keepAwake !== 'boolean') {
             settings.keepAwake = false;
+          }
+        }
+        if (version < 3) {
+          const settings = state.settings as Partial<Settings> | undefined;
+          if (settings && typeof settings.showSubSteps !== 'boolean') {
+            settings.showSubSteps = false;
+          }
+          if (typeof state.subPhase !== 'number') {
+            state.subPhase = 0;
           }
         }
         return state as TrackerState;

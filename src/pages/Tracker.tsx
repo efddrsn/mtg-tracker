@@ -5,27 +5,37 @@ import {
 } from '../store';
 import { CounterWidget } from '../components/CounterWidget';
 import { PhaseTracker } from '../components/PhaseTracker';
+import { ManaIcon, StormIcon, CounterIcon } from '../components/Symbols';
 
 const LONG_PRESS_MS = 450;
 const PRESS_CANCEL_PX = 8;
 const DRAG_TAP_PX = 6;
 const GRID_GAP_PX = 8;
 
+// Swipe-to-reset thresholds. Tuned so a deliberate gesture triggers,
+// but tap/hold inside a widget does not.
+const SWIPE_RESET_DX = 180;
+const SWIPE_RESET_DY_MAX = 90;
+const SWIPE_RESET_MS = 700;
+
 export function Tracker() {
   const {
     mana, storm, counters, settings,
-    incMana, decMana, resetMana,
-    incStorm, decStorm, resetStorm,
-    incCounter, decCounter, resetCounter,
+    incMana, decMana,
+    incStorm, decStorm,
+    incCounter, decCounter,
     reorderWidgets, cycleWidgetColSpan, setWidgetSize,
+    resetAll,
   } = useStore();
 
   const [editMode, setEditMode] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragDelta, setDragDelta] = useState({ x: 0, y: 0 });
   const [resizingId, setResizingId] = useState<string | null>(null);
+  const [resetFlash, setResetFlash] = useState(false);
 
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const pressTimerRef = useRef<number | null>(null);
   const pressStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -124,7 +134,6 @@ export function Tracker() {
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
-      // ── resizing flow ─────────────────────────────────────────────
       const rs = resizeRef.current;
       if (rs) {
         const dx = e.clientX - rs.startX;
@@ -140,7 +149,6 @@ export function Tracker() {
         return;
       }
 
-      // ── reorder/long-press flow ──────────────────────────────────
       const start = pressStartRef.current;
       if (!start) return;
       const dx = e.clientX - start.x;
@@ -168,9 +176,6 @@ export function Tracker() {
         if (!host) continue;
         const wid = host.dataset.widgetId;
         if (!wid) continue;
-        // The dragged widget itself is rendered on top with a transform, so
-        // it sits under the pointer for the entire drag. Skip past it so we
-        // can detect the widget the user is actually hovering over.
         if (wid === draggingIdRef.current) continue;
         if (wid !== lastHoverIdRef.current) {
           reorderWidgets(draggingIdRef.current, wid);
@@ -219,6 +224,57 @@ export function Tracker() {
     };
   }, [reorderWidgets, cycleWidgetColSpan, setWidgetSize, settings.columns]);
 
+  // Swipe-to-reset gesture on the tracker surface.
+  useEffect(() => {
+    if (editMode) return;
+    const el = scrollRef.current;
+    if (!el) return;
+
+    let startX = 0;
+    let startY = 0;
+    let startT = 0;
+    let active = false;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) { active = false; return; }
+      const t = e.touches[0];
+      startX = t.clientX;
+      startY = t.clientY;
+      startT = Date.now();
+      active = true;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!active || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      if (Math.abs(t.clientY - startY) > SWIPE_RESET_DY_MAX) active = false;
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!active) return;
+      active = false;
+      const t = e.changedTouches[0];
+      if (!t) return;
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+      const dt = Date.now() - startT;
+      if (dt < SWIPE_RESET_MS && Math.abs(dx) >= SWIPE_RESET_DX && Math.abs(dy) <= SWIPE_RESET_DY_MAX) {
+        resetAll();
+        setResetFlash(true);
+        window.setTimeout(() => setResetFlash(false), 600);
+      }
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: true });
+    el.addEventListener('touchend', onTouchEnd);
+    el.addEventListener('touchcancel', onTouchEnd);
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [editMode, resetAll]);
+
   useEffect(() => {
     if (!editMode) return;
     const onKey = (e: KeyboardEvent) => {
@@ -249,11 +305,10 @@ export function Tracker() {
         <CounterWidget
           value={storm}
           label="Storm"
-          symbol="⚡"
+          icon={<StormIcon width="100%" height="100%" />}
           accentColor="var(--color-accent)"
           onInc={incStorm}
           onDec={decStorm}
-          onReset={resetStorm}
           colSpan={span}
           rowSpan={rows}
         />
@@ -266,12 +321,11 @@ export function Tracker() {
         <CounterWidget
           value={mana[color]}
           label={info.name}
-          symbol={info.symbol}
+          icon={<ManaIcon color={color} width="100%" height="100%" />}
           bgColor={info.bgVar}
           accentColor={info.colorVar}
           onInc={() => incMana(color)}
           onDec={() => decMana(color)}
-          onReset={() => resetMana(color)}
           colSpan={span}
           rowSpan={rows}
         />
@@ -284,10 +338,9 @@ export function Tracker() {
         <CounterWidget
           value={counter.value}
           label={counter.name}
-          symbol="🔢"
+          icon={<CounterIcon width="100%" height="100%" />}
           onInc={() => incCounter(counter.id)}
           onDec={() => decCounter(counter.id)}
-          onReset={() => resetCounter(counter.id)}
           colSpan={span}
           rowSpan={rows}
         />
@@ -298,9 +351,20 @@ export function Tracker() {
 
   return (
     <div
-      className="tracker-scroll flex-1 overflow-y-auto scroll-hide px-2 pb-4"
+      ref={scrollRef}
+      className="tracker-scroll relative flex-1 overflow-y-auto scroll-hide px-2 pb-4"
       onPointerDown={exitOnBackdrop}
     >
+      {resetFlash && (
+        <div
+          className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center reset-flash"
+          aria-hidden
+        >
+          <div className="px-5 py-3 rounded-2xl bg-accent/90 text-white text-sm font-bold uppercase tracking-wider shadow-2xl">
+            Reset
+          </div>
+        </div>
+      )}
       {editMode && (
         <div
           data-edit-toolbar
