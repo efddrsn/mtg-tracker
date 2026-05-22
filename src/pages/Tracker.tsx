@@ -1,32 +1,33 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  useStore, MANA_INFO, clampColSpan, clampRowSpan,
+  useStore, MANA_INFO, clampColSpan, clampRowSpan, vibrate,
   type ManaColor, type Widget,
 } from '../store';
 import { CounterWidget } from '../components/CounterWidget';
 import { PhaseTracker } from '../components/PhaseTracker';
-import { ManaIcon, StormIcon, CounterIcon } from '../components/Symbols';
+import { ManaIcon, StormIcon, CounterIcon, HeartIcon } from '../components/Symbols';
 
 const LONG_PRESS_MS = 450;
 const PRESS_CANCEL_PX = 8;
 const DRAG_TAP_PX = 6;
 const GRID_GAP_PX = 8;
 
-// Swipe-to-reset thresholds. Tuned so a deliberate gesture triggers,
-// but tap/hold inside a widget does not.
 const SWIPE_RESET_DX = 180;
 const SWIPE_RESET_DY_MAX = 90;
 const SWIPE_RESET_MS = 700;
 
 export function Tracker() {
   const {
-    mana, storm, counters, settings,
+    mana, storm, counters, settings, life,
     incMana, decMana,
     incStorm, decStorm,
     incCounter, decCounter,
+    incLife, decLife,
     reorderWidgets, cycleWidgetColSpan, setWidgetSize,
     resetAll,
   } = useStore();
+  const navigate = useNavigate();
 
   const [editMode, setEditMode] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -73,7 +74,7 @@ export function Tracker() {
   };
 
   const beginDrag = (id: string) => {
-    try { navigator.vibrate?.(25); } catch { /* noop */ }
+    vibrate(25);
     draggingIdRef.current = id;
     hasMovedRef.current = false;
     lastHoverIdRef.current = id;
@@ -109,7 +110,7 @@ export function Tracker() {
     };
     setResizingId(widget.id);
     try { (e.target as Element).setPointerCapture?.(e.pointerId); } catch { /* noop */ }
-    try { navigator.vibrate?.(20); } catch { /* noop */ }
+    vibrate(20);
   };
 
   const onWidgetPointerDown = (e: React.PointerEvent<HTMLDivElement>, widget: Widget) => {
@@ -144,7 +145,7 @@ export function Tracker() {
           rs.lastCol = newCol;
           rs.lastRow = newRow;
           setWidgetSize(rs.id, newCol, newRow);
-          try { navigator.vibrate?.(6); } catch { /* noop */ }
+          vibrate(6);
         }
         return;
       }
@@ -180,7 +181,7 @@ export function Tracker() {
         if (wid !== lastHoverIdRef.current) {
           reorderWidgets(draggingIdRef.current, wid);
           lastHoverIdRef.current = wid;
-          try { navigator.vibrate?.(8); } catch { /* noop */ }
+          vibrate(8);
         }
         break;
       }
@@ -190,7 +191,7 @@ export function Tracker() {
       if (resizeRef.current) {
         resizeRef.current = null;
         setResizingId(null);
-        try { navigator.vibrate?.(15); } catch { /* noop */ }
+        vibrate(15);
         return;
       }
 
@@ -224,7 +225,6 @@ export function Tracker() {
     };
   }, [reorderWidgets, cycleWidgetColSpan, setWidgetSize, settings.columns]);
 
-  // Swipe-to-reset gesture on the tracker surface.
   useEffect(() => {
     if (editMode) return;
     const el = scrollRef.current;
@@ -300,6 +300,21 @@ export function Tracker() {
     if (widget.type === 'phase') {
       return <PhaseTracker rowSpan={rows} colSpan={span} />;
     }
+    if (widget.type === 'life') {
+      return (
+        <CounterWidget
+          value={life}
+          label="Life"
+          icon={<HeartIcon width="100%" height="100%" />}
+          bgColor="var(--color-life-bg)"
+          accentColor="var(--color-life)"
+          onInc={incLife}
+          onDec={decLife}
+          colSpan={span}
+          rowSpan={rows}
+        />
+      );
+    }
     if (widget.type === 'storm') {
       return (
         <CounterWidget
@@ -352,7 +367,7 @@ export function Tracker() {
   return (
     <div
       ref={scrollRef}
-      className="tracker-scroll relative flex-1 overflow-y-auto scroll-hide px-2 pb-4"
+      className="tracker-scroll relative flex-1 overflow-y-auto scroll-hide px-2 pt-2 pb-4"
       onPointerDown={exitOnBackdrop}
     >
       {resetFlash && (
@@ -369,14 +384,27 @@ export function Tracker() {
         <div
           data-edit-toolbar
           className="sticky top-0 z-30 -mx-2 px-3 py-2 mb-1 flex items-center justify-between
-                     bg-black/50 backdrop-blur-md border-b border-border"
+                     bg-black/60 backdrop-blur-md border-b border-border"
         >
-          <span className="text-[11px] uppercase tracking-wider font-semibold text-text-secondary truncate pr-2">
-            Drag to reorder · Corner to resize
+          <button
+            data-edit-toolbar
+            onClick={() => { vibrate(15); navigate('/settings'); }}
+            className="counter-btn w-9 h-9 flex items-center justify-center rounded-full
+                       bg-white/10 text-text-primary hover:bg-white/20 active:scale-95 transition-all"
+            aria-label="Settings"
+            title="Settings"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+            </svg>
+          </button>
+          <span className="text-[11px] uppercase tracking-wider font-semibold text-text-secondary truncate px-2">
+            Drag · corner to resize
           </span>
           <button
             data-edit-toolbar
-            onClick={() => setEditMode(false)}
+            onClick={() => { vibrate(10); setEditMode(false); }}
             className="px-3 py-1.5 rounded-full bg-accent text-white text-xs font-bold
                        hover:bg-accent-hover active:scale-95 transition-all shrink-0"
           >

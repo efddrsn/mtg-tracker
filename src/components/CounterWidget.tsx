@@ -28,11 +28,15 @@ export function CounterWidget({
   const incRepeat = useRepeatAction(onInc);
 
   const area = colSpan * rowSpan;
-  const valueSize = area >= 4
-    ? 'text-6xl'
-    : area >= 2
-      ? 'text-5xl'
-      : 'text-4xl';
+  const valueSize = area >= 6
+    ? 'text-7xl'
+    : area >= 4
+      ? 'text-6xl'
+      : area >= 2
+        ? 'text-5xl'
+        : 'text-4xl';
+
+  const hintSize = area >= 4 ? 'text-3xl' : area >= 2 ? 'text-2xl' : 'text-xl';
 
   return (
     <div
@@ -42,10 +46,10 @@ export function CounterWidget({
       {icon && (
         <div
           className="absolute inset-0 flex items-center justify-center pointer-events-none"
-          style={{ color: accentColor, opacity: 0.18 }}
+          style={{ color: accentColor, opacity: 0.32 }}
           aria-hidden
         >
-          <div className="w-[70%] h-[70%]">
+          <div className="w-[72%] h-[72%]">
             {icon}
           </div>
         </div>
@@ -57,7 +61,7 @@ export function CounterWidget({
         aria-label={`Decrease ${label}`}
       >
         <span
-          className="text-xl font-bold leading-none opacity-30"
+          className={`${hintSize} font-bold leading-none opacity-40`}
           style={{ color: accentColor }}
         >
           −
@@ -69,7 +73,7 @@ export function CounterWidget({
         aria-label={`Increase ${label}`}
       >
         <span
-          className="text-xl font-bold leading-none opacity-30"
+          className={`${hintSize} font-bold leading-none opacity-40`}
           style={{ color: accentColor }}
         >
           +
@@ -79,7 +83,7 @@ export function CounterWidget({
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <span
           className={`${valueSize} font-bold tabular-nums leading-none`}
-          style={{ color: value > 0 ? accentColor : 'var(--color-text-dim)' }}
+          style={{ color: value === 0 ? 'var(--color-text-dim)' : accentColor }}
         >
           {value}
         </span>

@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { Header } from './components/Header';
 import { Tracker } from './pages/Tracker';
 import { Settings } from './pages/Settings';
 import { useStore } from './store';
@@ -8,7 +7,6 @@ import { useStore } from './store';
 function App() {
   const keepAwake = useStore((s) => s.settings.keepAwake);
 
-  // Wake Lock — keep screen on during a game when the user opts in.
   useEffect(() => {
     if (!keepAwake) return;
     type WakeLockSentinel = { release: () => Promise<void> };
@@ -46,7 +44,6 @@ function App() {
   return (
     <BrowserRouter>
       <div className="app-shell flex flex-col h-full">
-        <Header />
         <Routes>
           <Route path="/" element={<Tracker />} />
           <Route path="/settings" element={<Settings />} />

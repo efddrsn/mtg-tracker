@@ -42,7 +42,7 @@ export interface CustomCounter {
   value: number;
 }
 
-export type WidgetType = 'phase' | 'storm' | 'mana' | 'counter';
+export type WidgetType = 'phase' | 'storm' | 'mana' | 'counter' | 'life';
 
 export interface Widget {
   id: string;
@@ -55,6 +55,7 @@ export interface Widget {
 }
 
 export const MAX_ROW_SPAN = 4;
+export const DEFAULT_LIFE = 20;
 
 export interface Settings {
   columns: 2 | 3 | 4;
@@ -69,6 +70,7 @@ export interface Settings {
 
 function createDefaultWidgets(): Widget[] {
   return [
+    { id: 'life',   type: 'life',   colSpan: 2, rowSpan: 2, visible: true },
     { id: 'phase',  type: 'phase',  colSpan: 2, rowSpan: 1, visible: true },
     { id: 'storm',  type: 'storm',  colSpan: 1, rowSpan: 1, visible: true },
     { id: 'mana-W', type: 'mana', manaColor: 'W', colSpan: 1, rowSpan: 1, visible: true },
@@ -109,6 +111,7 @@ interface TrackerState {
   currentPhase: number;
   subPhase: number;
   turn: number;
+  life: number;
   counters: CustomCounter[];
   settings: Settings;
 
@@ -125,6 +128,9 @@ interface TrackerState {
   setSubPhase: (i: number) => void;
   newTurn: () => void;
   prevTurn: () => void;
+  incLife: () => void;
+  decLife: () => void;
+  resetLife: () => void;
   addCounter: (name: string) => void;
   removeCounter: (id: string) => void;
   incCounter: (id: string) => void;
@@ -141,7 +147,7 @@ interface TrackerState {
   cycleWidgetColSpan: (id: string) => void;
 }
 
-function vibrate(ms = 10) {
+export function vibrate(ms = 10) {
   try { navigator.vibrate?.(ms); } catch { /* noop */ }
 }
 
@@ -153,15 +159,16 @@ export const useStore = create<TrackerState>()(
       currentPhase: 0,
       subPhase: 0,
       turn: 1,
+      life: DEFAULT_LIFE,
       counters: [],
       settings: defaultSettings(),
 
       incMana: (c) => {
-        vibrate();
+        vibrate(12);
         set((s) => ({ mana: { ...s.mana, [c]: s.mana[c] + 1 } }));
       },
       decMana: (c) => {
-        vibrate();
+        vibrate(12);
         set((s) => ({ mana: { ...s.mana, [c]: Math.max(0, s.mana[c] - 1) } }));
       },
       resetMana: (c) => {
@@ -173,23 +180,22 @@ export const useStore = create<TrackerState>()(
       },
 
       setStorm: (v) => set({ storm: Math.max(0, v) }),
-      incStorm: () => { vibrate(); set((s) => ({ storm: s.storm + 1 })); },
-      decStorm: () => { vibrate(); set((s) => ({ storm: Math.max(0, s.storm - 1) })); },
+      incStorm: () => { vibrate(12); set((s) => ({ storm: s.storm + 1 })); },
+      decStorm: () => { vibrate(12); set((s) => ({ storm: Math.max(0, s.storm - 1) })); },
       resetStorm: () => { vibrate(30); set({ storm: 0 }); },
 
-      setPhase: (i) => { vibrate(5); set({ currentPhase: i, subPhase: 0 }); },
+      setPhase: (i) => { vibrate(8); set({ currentPhase: i, subPhase: 0 }); },
 
       nextPhase: () => {
-        vibrate(5);
+        vibrate(10);
         set((s) => {
           const phase = PHASES[s.currentPhase];
           const subs = SUB_STEPS[phase];
           if (s.settings.showSubSteps && subs.length > 0 && s.subPhase < subs.length - 1) {
             return { subPhase: s.subPhase + 1 };
           }
-          // Past the last phase → start a new turn.
           if (s.currentPhase >= PHASES.length - 1) {
-            vibrate(40);
+            vibrate(45);
             return {
               currentPhase: 0,
               subPhase: 0,
@@ -203,7 +209,7 @@ export const useStore = create<TrackerState>()(
       },
 
       prevPhase: () => {
-        vibrate(5);
+        vibrate(10);
         set((s) => {
           const phase = PHASES[s.currentPhase];
           const subs = SUB_STEPS[phase];
@@ -224,10 +230,10 @@ export const useStore = create<TrackerState>()(
         });
       },
 
-      setSubPhase: (i) => { vibrate(5); set({ subPhase: Math.max(0, i) }); },
+      setSubPhase: (i) => { vibrate(6); set({ subPhase: Math.max(0, i) }); },
 
       newTurn: () => {
-        vibrate(40);
+        vibrate(45);
         set((s) => ({
           currentPhase: 0,
           subPhase: 0,
@@ -242,7 +248,12 @@ export const useStore = create<TrackerState>()(
         set((s) => s.turn > 1 ? { turn: s.turn - 1, currentPhase: 0, subPhase: 0 } : s);
       },
 
+      incLife: () => { vibrate(12); set((s) => ({ life: s.life + 1 })); },
+      decLife: () => { vibrate(12); set((s) => ({ life: s.life - 1 })); },
+      resetLife: () => { vibrate(30); set({ life: DEFAULT_LIFE }); },
+
       addCounter: (name) => {
+        vibrate(18);
         const ts = Date.now();
         const cId = `c-${ts}`;
         set((s) => ({
@@ -256,24 +267,27 @@ export const useStore = create<TrackerState>()(
           },
         }));
       },
-      removeCounter: (id) =>
+      removeCounter: (id) => {
+        vibrate(25);
         set((s) => ({
           counters: s.counters.filter((c) => c.id !== id),
           settings: {
             ...s.settings,
             widgets: s.settings.widgets.filter((w) => w.counterId !== id),
           },
-        })),
+        }));
+      },
       incCounter: (id) => {
-        vibrate();
+        vibrate(12);
         set((s) => ({
           counters: s.counters.map((c) => c.id === id ? { ...c, value: c.value + 1 } : c),
         }));
       },
       decCounter: (id) => {
-        vibrate();
+        vibrate(12);
         set((s) => ({
-          counters: s.counters.map((c) => c.id === id ? { ...c, value: Math.max(0, c.value - 1) } : c),
+          // Custom counters can go negative (loyalty, commander damage, etc.)
+          counters: s.counters.map((c) => c.id === id ? { ...c, value: c.value - 1 } : c),
         }));
       },
       resetCounter: (id) => {
@@ -284,13 +298,14 @@ export const useStore = create<TrackerState>()(
       },
 
       resetAll: () => {
-        vibrate(50);
+        vibrate(60);
         set({
           mana: { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 },
           storm: 0,
           currentPhase: 0,
           subPhase: 0,
           turn: 1,
+          life: DEFAULT_LIFE,
           counters: [],
         });
       },
@@ -330,7 +345,8 @@ export const useStore = create<TrackerState>()(
           return { settings: { ...s.settings, widgets: ws } };
         }),
 
-      toggleWidgetVisible: (id) =>
+      toggleWidgetVisible: (id) => {
+        vibrate(10);
         set((s) => ({
           settings: {
             ...s.settings,
@@ -338,7 +354,8 @@ export const useStore = create<TrackerState>()(
               w.id === id ? { ...w, visible: !w.visible } : w
             ),
           },
-        })),
+        }));
+      },
 
       setWidgetSize: (id, colSpan, rowSpan) =>
         set((s) => {
@@ -391,7 +408,7 @@ export const useStore = create<TrackerState>()(
     }),
     {
       name: 'mtg-tracker-storage',
-      version: 3,
+      version: 4,
       migrate: (persistedState, version) => {
         const state = persistedState as Partial<TrackerState> | undefined;
         if (!state) return persistedState as unknown as TrackerState;
@@ -417,6 +434,19 @@ export const useStore = create<TrackerState>()(
           }
           if (typeof state.subPhase !== 'number') {
             state.subPhase = 0;
+          }
+        }
+        if (version < 4) {
+          if (typeof state.life !== 'number') state.life = DEFAULT_LIFE;
+          const settings = state.settings as Partial<Settings> | undefined;
+          if (settings?.widgets) {
+            const hasLife = settings.widgets.some((w) => w.type === 'life');
+            if (!hasLife) {
+              settings.widgets = [
+                { id: 'life', type: 'life' as const, colSpan: 2, rowSpan: 2, visible: true },
+                ...settings.widgets,
+              ];
+            }
           }
         }
         return state as TrackerState;
