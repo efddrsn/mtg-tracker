@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  useStore, MANA_INFO, clampColSpan, clampRowSpan, vibrate,
+  useStore, MANA_INFO, clampColSpan, clampRowSpan, vibrate, calculateGridRows,
   type ManaColor, type Widget,
 } from '../store';
 import { CounterWidget } from '../components/CounterWidget';
@@ -42,6 +42,7 @@ export function Tracker() {
   const pressStartRef = useRef<{ x: number; y: number } | null>(null);
   const pressedIdRef = useRef<string | null>(null);
   const wasEditOnPressRef = useRef(false);
+  const backdropPressRef = useRef(false);
 
   const draggingIdRef = useRef<string | null>(null);
   const hasMovedRef = useRef(false);
@@ -59,12 +60,19 @@ export function Tracker() {
     lastRow: number;
   } | null>(null);
 
-  const visibleWidgets = settings.widgets.filter((w) => {
-    if (!w.visible) return false;
-    if (w.type === 'mana' && w.manaColor && !settings.enabledMana.includes(w.manaColor)) return false;
-    if (w.type === 'counter' && w.counterId && !counters.find((c) => c.id === w.counterId)) return false;
-    return true;
-  });
+  const visibleWidgets = useMemo(
+    () => settings.widgets.filter((w) => {
+      if (!w.visible) return false;
+      if (w.type === 'counter' && w.counterId && !counters.find((c) => c.id === w.counterId)) return false;
+      return true;
+    }),
+    [settings.widgets, counters]
+  );
+
+  const totalRows = useMemo(
+    () => calculateGridRows(visibleWidgets, settings.columns),
+    [visibleWidgets, settings.columns]
+  );
 
   const cancelPressTimer = () => {
     if (pressTimerRef.current != null) {
@@ -92,10 +100,13 @@ export function Tracker() {
     cancelPressTimer();
     pressedIdRef.current = null;
     pressStartRef.current = null;
+    backdropPressRef.current = false;
 
-    const rowVar = getComputedStyle(grid).getPropertyValue('--row-h').trim();
-    const rowH = parseFloat(rowVar) || 76;
-    const cellW = (grid.clientWidth - GRID_GAP_PX * (settings.columns - 1)) / settings.columns;
+    const rect = grid.getBoundingClientRect();
+    const rowH = rect.height > 0 && totalRows > 0
+      ? (rect.height - GRID_GAP_PX * (totalRows - 1)) / totalRows
+      : 76;
+    const cellW = (rect.width - GRID_GAP_PX * (settings.columns - 1)) / settings.columns;
 
     resizeRef.current = {
       id: widget.id,
@@ -118,6 +129,7 @@ export function Tracker() {
     if ((e.target as HTMLElement).closest('[data-resize-handle]')) return;
     pressStartRef.current = { x: e.clientX, y: e.clientY };
     pressedIdRef.current = widget.id;
+    backdropPressRef.current = false;
     wasEditOnPressRef.current = editMode;
     cancelPressTimer();
 
@@ -131,6 +143,32 @@ export function Tracker() {
         beginDrag(widget.id);
       }, LONG_PRESS_MS);
     }
+  };
+
+  // Long-press on the empty backdrop also enters edit mode (no drag).
+  const onScrollPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-widget-id]')) return;
+    if (target.closest('[data-edit-toolbar]')) return;
+
+    if (editMode) {
+      if (!draggingIdRef.current && !resizeRef.current) {
+        setEditMode(false);
+      }
+      return;
+    }
+
+    pressStartRef.current = { x: e.clientX, y: e.clientY };
+    pressedIdRef.current = null;
+    backdropPressRef.current = true;
+    cancelPressTimer();
+    pressTimerRef.current = window.setTimeout(() => {
+      pressTimerRef.current = null;
+      if (!backdropPressRef.current) return;
+      vibrate(25);
+      setEditMode(true);
+    }, LONG_PRESS_MS);
   };
 
   useEffect(() => {
@@ -160,6 +198,7 @@ export function Tracker() {
           cancelPressTimer();
           pressedIdRef.current = null;
           pressStartRef.current = null;
+          backdropPressRef.current = false;
         }
         return;
       }
@@ -202,6 +241,7 @@ export function Tracker() {
 
       pressedIdRef.current = null;
       pressStartRef.current = null;
+      backdropPressRef.current = false;
       draggingIdRef.current = null;
       hasMovedRef.current = false;
       lastHoverIdRef.current = null;
@@ -284,18 +324,6 @@ export function Tracker() {
     return () => window.removeEventListener('keydown', onKey);
   }, [editMode]);
 
-  const exitOnBackdrop = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!editMode) return;
-    if (draggingIdRef.current || resizeRef.current) return;
-    const target = e.target as HTMLElement;
-    if (
-      !target.closest('[data-widget-id]') &&
-      !target.closest('[data-edit-toolbar]')
-    ) {
-      setEditMode(false);
-    }
-  };
-
   const renderContent = (widget: Widget, span: number, rows: number) => {
     if (widget.type === 'phase') {
       return <PhaseTracker rowSpan={rows} colSpan={span} />;
@@ -364,11 +392,23 @@ export function Tracker() {
     return null;
   };
 
+  const fit = settings.fitToScreen;
+
+  const gridStyle: React.CSSProperties = {
+    gridTemplateColumns: `repeat(${settings.columns}, minmax(0, 1fr))`,
+  };
+  if (fit) {
+    gridStyle.gridTemplateRows = `repeat(${totalRows}, minmax(0, 1fr))`;
+  } else {
+    gridStyle.gridAutoRows = 'var(--row-h)';
+  }
+
   return (
     <div
       ref={scrollRef}
-      className="tracker-scroll relative flex-1 overflow-y-auto scroll-hide px-2 pt-2 pb-4"
-      onPointerDown={exitOnBackdrop}
+      className={`tracker-scroll relative flex-1 ${fit ? 'overflow-hidden' : 'overflow-y-auto'} scroll-hide
+                 flex flex-col px-2 pt-2 pb-2`}
+      onPointerDown={onScrollPointerDown}
     >
       {resetFlash && (
         <div
@@ -383,8 +423,8 @@ export function Tracker() {
       {editMode && (
         <div
           data-edit-toolbar
-          className="sticky top-0 z-30 -mx-2 px-3 py-2 mb-1 flex items-center justify-between
-                     bg-black/60 backdrop-blur-md border-b border-border"
+          className="shrink-0 z-30 px-3 py-2 mb-2 flex items-center justify-between
+                     bg-black/60 backdrop-blur-md rounded-xl border border-border"
         >
           <button
             data-edit-toolbar
@@ -414,11 +454,8 @@ export function Tracker() {
       )}
       <div
         ref={gridRef}
-        className="tracker-grid grid gap-2"
-        style={{
-          gridTemplateColumns: `repeat(${settings.columns}, minmax(0, 1fr))`,
-          gridAutoRows: 'var(--row-h)',
-        }}
+        className={`tracker-grid grid gap-2 ${fit ? 'flex-1 min-h-0' : ''}`}
+        style={gridStyle}
       >
         {visibleWidgets.map((widget, idx) => {
           const span = clampColSpan(widget.colSpan, settings.columns);
@@ -449,7 +486,7 @@ export function Tracker() {
             <div
               key={widget.id}
               data-widget-id={widget.id}
-              className={`relative ${jiggle ? 'jiggle' : ''}`}
+              className={`relative min-h-0 min-w-0 ${jiggle ? 'jiggle' : ''}`}
               style={style}
               onPointerDown={(e) => onWidgetPointerDown(e, widget)}
             >
