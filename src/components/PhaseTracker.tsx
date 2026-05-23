@@ -14,7 +14,12 @@ export function PhaseTracker({ rowSpan = 1, colSpan = 1 }: Props) {
   const turn = useStore((s) => s.turn);
   const showSubSteps = useStore((s) => s.settings.showSubSteps);
   const opacity = useStore((s) => s.settings.trackerOpacity ?? 1);
+  const landDrop = useStore((s) => s.landDrop);
+  const toggleLandDrop = useStore((s) => s.toggleLandDrop);
   const activeRef = useRef<HTMLDivElement>(null);
+
+  const currentName = PHASES[currentPhase];
+  const isMainPhase = currentName === 'Main 1' || currentName === 'Main 2';
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
@@ -24,8 +29,7 @@ export function PhaseTracker({ rowSpan = 1, colSpan = 1 }: Props) {
   const big = expanded && colSpan >= 2;
   const huge = rowSpan >= 3 || (rowSpan >= 2 && colSpan >= 3);
 
-  const currentPhaseName = PHASES[currentPhase];
-  const subs = SUB_STEPS[currentPhaseName];
+  const subs = SUB_STEPS[currentName];
   const hasSubs = showSubSteps && subs.length > 0;
 
   const phaseChipCls = huge
@@ -81,6 +85,36 @@ export function PhaseTracker({ rowSpan = 1, colSpan = 1 }: Props) {
       >
         <span className={`${edgeHintSize} font-bold leading-none text-text-dim opacity-50`} aria-hidden>›</span>
       </button>
+
+      {/* Land-drop reminder — only during main phases. Toggleable, persists this turn. */}
+      {isMainPhase && (
+        <button
+          onClick={(e) => { e.stopPropagation(); toggleLandDrop(); }}
+          className={`absolute z-20 flex items-center gap-1 font-bold uppercase tracking-wider
+                     rounded-full transition-all select-none
+                     ${expanded ? 'top-2 right-2 px-2.5 py-1 text-[10px]' : 'top-1 right-1 px-2 py-0.5 text-[9px]'}`}
+          style={{
+            background: landDrop
+              ? 'color-mix(in srgb, #4ade80 26%, transparent)'
+              : 'rgba(255,255,255,0.06)',
+            color: landDrop ? '#bbf7d0' : 'rgba(255,255,255,0.65)',
+            boxShadow: landDrop
+              ? '0 0 18px -4px rgba(74,222,128,0.7), inset 0 0 0 1px rgba(74,222,128,0.55)'
+              : 'inset 0 0 0 1px rgba(255,255,255,0.18)',
+          }}
+          aria-pressed={landDrop}
+          aria-label={landDrop ? 'Land drop played this turn' : 'Mark land drop played'}
+        >
+          <svg width={expanded ? 11 : 9} height={expanded ? 11 : 9} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            {landDrop ? (
+              <path d="M5 12l4 4L19 7" />
+            ) : (
+              <circle cx="12" cy="12" r="9" />
+            )}
+          </svg>
+          Land
+        </button>
+      )}
 
       {/* Turn indicator — display only. */}
       <div

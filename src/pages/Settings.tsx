@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  useStore, MANA_INFO, BG_PRESETS, BG_GRADIENTS, DEFAULT_BG_BRIGHTNESS, vibrate, isHapticSupported,
+  useStore, MANA_INFO, BG_PRESETS, BG_GRADIENTS, BG_AURORAS, DEFAULT_BG_BRIGHTNESS, vibrate, isHapticSupported,
 } from '../store';
 import { ManaIcon, StormIcon, CounterIcon, HeartIcon, PhaseIcon } from '../components/Symbols';
 
@@ -165,6 +165,31 @@ export function Settings() {
                 >
                   {active && (
                     <span className="absolute inset-0 flex items-center justify-center text-white text-base">✓</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <p className="text-[11px] uppercase tracking-wider font-semibold text-text-dim mt-4 mb-2">Aurora Effects</p>
+          <div className="grid grid-cols-3 gap-2">
+            {BG_AURORAS.map((p) => {
+              const active = settings.backgroundColor === p.value;
+              return (
+                <button
+                  key={p.value}
+                  className={`aspect-[3/2] rounded-xl transition-all relative overflow-hidden
+                    ${active ? 'ring-2 ring-accent ring-offset-2 ring-offset-bg' : 'ring-1 ring-border'}`}
+                  style={{ background: p.preview }}
+                  onClick={() => setBg(p.value)}
+                  aria-label={p.label}
+                  title={p.label}
+                >
+                  <span className="absolute bottom-1 left-1.5 text-[10px] font-bold text-white drop-shadow-md">
+                    {p.label}
+                  </span>
+                  {active && (
+                    <span className="absolute top-1 right-1 text-white text-xs">✓</span>
                   )}
                 </button>
               );

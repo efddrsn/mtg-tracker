@@ -58,21 +58,187 @@ body {
   position: relative;
 }
 
-/* Dim overlay that adjusts background brightness without dimming widgets. */
-body::before {
-  content: '';
+/* Dim overlay that adjusts background brightness without dimming widgets.
+   Lives above the background layers (z 0) and below the app shell (z 2). */
+.app-bg-dim {
   position: fixed;
   inset: 0;
   background: #000;
   opacity: var(--bg-dim, 0);
   pointer-events: none;
-  z-index: 0;
+  z-index: 1;
   transition: opacity 250ms ease;
+}
+
+.app-bg-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
 }
 
 .app-shell {
   position: relative;
-  z-index: 1;
+  z-index: 2;
+}
+
+/* Aurora — stacked blurred blobs with subtle stars over a deep gradient base. */
+.aurora-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.aurora-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.85;
+  mix-blend-mode: screen;
+  will-change: transform;
+}
+
+/* Borealis: cool teal river crossed by violet + soft pink shoulders. */
+.aurora-borealis {
+  background: linear-gradient(180deg, #07083a 0%, #150c5e 50%, #0a0844 100%);
+}
+.aurora-borealis .aurora-blob-1 {
+  width: 130%; height: 50%;
+  top: 32%; left: -15%;
+  background: radial-gradient(ellipse at center, #4cd9b8 0%, rgba(76, 217, 184, 0.55) 30%, transparent 70%);
+  animation: aurora-drift-1 32s ease-in-out infinite;
+}
+.aurora-borealis .aurora-blob-2 {
+  width: 70%; height: 40%;
+  top: 8%; left: -8%;
+  background: radial-gradient(ellipse at center, #c98ad4 0%, rgba(201, 138, 212, 0.5) 35%, transparent 72%);
+  animation: aurora-drift-2 26s ease-in-out infinite;
+  animation-delay: -6s;
+}
+.aurora-borealis .aurora-blob-3 {
+  width: 60%; height: 35%;
+  top: 55%; right: -10%;
+  background: radial-gradient(ellipse at center, #f0a8c8 0%, rgba(240, 168, 200, 0.45) 35%, transparent 72%);
+  animation: aurora-drift-3 28s ease-in-out infinite;
+  animation-delay: -12s;
+}
+.aurora-borealis .aurora-blob-4 {
+  width: 75%; height: 30%;
+  top: 62%; left: 8%;
+  background: radial-gradient(ellipse at center, #5cb8ff 0%, rgba(92, 184, 255, 0.4) 35%, transparent 72%);
+  animation: aurora-drift-4 34s ease-in-out infinite;
+  animation-delay: -18s;
+}
+
+/* Cosmic: violet + magenta wash with a cyan accent. */
+.aurora-cosmic {
+  background: linear-gradient(180deg, #0a0118 0%, #1a0530 60%, #050010 100%);
+}
+.aurora-cosmic .aurora-blob-1 {
+  width: 110%; height: 50%;
+  top: 18%; left: -10%;
+  background: radial-gradient(ellipse at center, #8a5cff 0%, rgba(138, 92, 255, 0.55) 35%, transparent 72%);
+  animation: aurora-drift-1 30s ease-in-out infinite;
+}
+.aurora-cosmic .aurora-blob-2 {
+  width: 70%; height: 40%;
+  top: 50%; right: -10%;
+  background: radial-gradient(ellipse at center, #ff5ca8 0%, rgba(255, 92, 168, 0.5) 35%, transparent 72%);
+  animation: aurora-drift-2 24s ease-in-out infinite;
+  animation-delay: -8s;
+}
+.aurora-cosmic .aurora-blob-3 {
+  width: 55%; height: 35%;
+  top: 10%; right: -5%;
+  background: radial-gradient(ellipse at center, #5cd6ff 0%, rgba(92, 214, 255, 0.45) 35%, transparent 72%);
+  animation: aurora-drift-3 28s ease-in-out infinite;
+  animation-delay: -14s;
+}
+.aurora-cosmic .aurora-blob-4 {
+  width: 70%; height: 35%;
+  top: 65%; left: -5%;
+  background: radial-gradient(ellipse at center, #c0a8ff 0%, rgba(192, 168, 255, 0.4) 35%, transparent 72%);
+  animation: aurora-drift-4 32s ease-in-out infinite;
+  animation-delay: -20s;
+}
+
+/* Reef: warm pink + orange over deep magenta. */
+.aurora-reef {
+  background: linear-gradient(180deg, #1a0530 0%, #2a0a40 50%, #100525 100%);
+}
+.aurora-reef .aurora-blob-1 {
+  width: 120%; height: 45%;
+  top: 38%; left: -15%;
+  background: radial-gradient(ellipse at center, #ffb05c 0%, rgba(255, 176, 92, 0.5) 35%, transparent 72%);
+  animation: aurora-drift-1 30s ease-in-out infinite;
+}
+.aurora-reef .aurora-blob-2 {
+  width: 65%; height: 35%;
+  top: 12%; right: -5%;
+  background: radial-gradient(ellipse at center, #ff5c8a 0%, rgba(255, 92, 138, 0.5) 35%, transparent 72%);
+  animation: aurora-drift-2 26s ease-in-out infinite;
+  animation-delay: -8s;
+}
+.aurora-reef .aurora-blob-3 {
+  width: 55%; height: 35%;
+  top: 65%; left: -8%;
+  background: radial-gradient(ellipse at center, #d45cff 0%, rgba(212, 92, 255, 0.45) 35%, transparent 72%);
+  animation: aurora-drift-3 28s ease-in-out infinite;
+  animation-delay: -14s;
+}
+.aurora-reef .aurora-blob-4 {
+  width: 60%; height: 30%;
+  top: 18%; left: 8%;
+  background: radial-gradient(ellipse at center, #ffe066 0%, rgba(255, 224, 102, 0.35) 35%, transparent 72%);
+  animation: aurora-drift-4 32s ease-in-out infinite;
+  animation-delay: -20s;
+}
+
+@keyframes aurora-drift-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(8%, -5%) scale(1.1); }
+  66%      { transform: translate(-6%, 4%) scale(0.95); }
+}
+@keyframes aurora-drift-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(18%, 6%) scale(1.15); }
+}
+@keyframes aurora-drift-3 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  40%      { transform: translate(-14%, 4%) scale(0.92); }
+  72%      { transform: translate(10%, -7%) scale(1.08); }
+}
+@keyframes aurora-drift-4 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  45%      { transform: translate(12%, -6%) scale(1.12); }
+  80%      { transform: translate(-8%, 3%) scale(0.97); }
+}
+
+/* Tiny star field over the aurora. */
+.aurora-stars {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 5% 12%, rgba(255,255,255,0.85), transparent 60%),
+    radial-gradient(1px 1px at 14% 28%, rgba(255,255,255,0.7), transparent 60%),
+    radial-gradient(1px 1px at 8% 78%, rgba(255,255,255,0.65), transparent 60%),
+    radial-gradient(1px 1px at 22% 55%, rgba(255,255,255,0.7), transparent 60%),
+    radial-gradient(1px 1px at 30% 18%, rgba(255,255,255,0.6), transparent 60%),
+    radial-gradient(1px 1px at 38% 88%, rgba(255,255,255,0.75), transparent 60%),
+    radial-gradient(1px 1px at 47% 35%, rgba(255,255,255,0.6), transparent 60%),
+    radial-gradient(1px 1px at 55% 70%, rgba(255,255,255,0.65), transparent 60%),
+    radial-gradient(1px 1px at 63% 22%, rgba(255,255,255,0.7), transparent 60%),
+    radial-gradient(1px 1px at 70% 92%, rgba(255,255,255,0.6), transparent 60%),
+    radial-gradient(1px 1px at 78% 14%, rgba(255,255,255,0.75), transparent 60%),
+    radial-gradient(1px 1px at 85% 50%, rgba(255,255,255,0.6), transparent 60%),
+    radial-gradient(1px 1px at 91% 78%, rgba(255,255,255,0.7), transparent 60%),
+    radial-gradient(1px 1px at 96% 28%, rgba(255,255,255,0.7), transparent 60%);
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-blob { animation: none; }
 }
 
 /* Slow drift for 3-color gradient backgrounds. */
