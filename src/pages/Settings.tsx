@@ -243,6 +243,35 @@ export function Settings() {
               Reset
             </button>
           </div>
+
+          <p className="text-[11px] uppercase tracking-wider font-semibold text-text-dim mt-4 mb-2">
+            Tracker Opacity
+          </p>
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface">
+            <span className="text-xs text-text-dim w-7 text-right tabular-nums">
+              {Math.round((settings.trackerOpacity ?? 1) * 100)}%
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={settings.trackerOpacity ?? 1}
+              onChange={(e) => updateSettings({ trackerOpacity: parseFloat(e.target.value) })}
+              className="flex-1 accent-accent"
+              aria-label="Tracker opacity"
+            />
+            <button
+              className="px-2 py-1 rounded-md bg-white/5 text-text-secondary text-[11px] font-semibold
+                         hover:bg-white/10"
+              onClick={() => { vibrate(10); updateSettings({ trackerOpacity: 1 }); }}
+            >
+              Reset
+            </button>
+          </div>
+          <p className="text-xs text-text-dim mt-2">
+            Lower opacity lets the background pattern show through; the accent border and glow always stay visible.
+          </p>
         </section>
 
         {/* Phase behavior */}

@@ -13,6 +13,7 @@ export function PhaseTracker({ rowSpan = 1, colSpan = 1 }: Props) {
   const prevPhase = useStore((s) => s.prevPhase);
   const turn = useStore((s) => s.turn);
   const showSubSteps = useStore((s) => s.settings.showSubSteps);
+  const opacity = useStore((s) => s.settings.trackerOpacity ?? 1);
   const activeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -59,10 +60,10 @@ export function PhaseTracker({ rowSpan = 1, colSpan = 1 }: Props) {
     <div
       className="widget-card relative rounded-2xl overflow-hidden h-full w-full flex flex-col min-h-0"
       style={{
-        background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 12%, transparent), color-mix(in srgb, var(--color-accent) 5%, transparent)), rgba(255,255,255,0.04)',
+        background: `linear-gradient(180deg, color-mix(in srgb, var(--color-accent) ${12 * opacity}%, transparent), color-mix(in srgb, var(--color-accent) ${5 * opacity}%, transparent)), rgba(255,255,255,${0.04 * opacity})`,
         boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent), 0 0 22px -6px color-mix(in srgb, var(--color-accent) 55%, transparent), 0 4px 18px rgba(0,0,0,0.35)',
-        backdropFilter: 'blur(14px) saturate(140%)',
-        WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+        backdropFilter: opacity > 0.05 ? 'blur(14px) saturate(140%)' : 'none',
+        WebkitBackdropFilter: opacity > 0.05 ? 'blur(14px) saturate(140%)' : 'none',
       }}
     >
       {/* Full-area tap zones. Left = previous, right = next. */}

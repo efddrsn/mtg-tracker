@@ -15,9 +15,7 @@ export const MANA_INFO: Record<ManaColor, { name: string; colorVar: string; bgVa
 };
 
 export const PHASES = [
-  'Untap',
-  'Upkeep',
-  'Draw',
+  'Beginning',
   'Main 1',
   'Combat',
   'Main 2',
@@ -27,9 +25,7 @@ export const PHASES = [
 export type Phase = (typeof PHASES)[number];
 
 export const SUB_STEPS: Record<Phase, readonly string[]> = {
-  'Untap': [],
-  'Upkeep': [],
-  'Draw': [],
+  'Beginning': ['Untap', 'Upkeep', 'Draw'],
   'Main 1': [],
   'Combat': ['Beginning', 'Attackers', 'Blockers', 'Damage', 'End of Combat'],
   'Main 2': [],
@@ -76,6 +72,9 @@ export const BG_GRADIENTS: { label: string; value: string }[] = [
   { label: 'Verdant',  value: 'linear-gradient(180deg, #0a1f0e 0%, #0e2d18 50%, #1a3a24 100%)' },
   { label: 'Cosmos',   value: 'linear-gradient(135deg, #050511 0%, #1a0a2e 50%, #2e0a4a 100%)' },
   { label: 'Ember',    value: 'linear-gradient(180deg, #0a0505 0%, #2d0a05 50%, #3d1a0a 100%)' },
+  // High-saturation CMY waves: hard stops give sharp band transitions that
+  // sweep across the screen when bg-animated drifts background-position.
+  { label: 'Neon CMY', value: 'linear-gradient(110deg, #00f5ff 0%, #00f5ff 22%, #ff00d4 27%, #ff00d4 50%, #fffb00 55%, #fffb00 78%, #00f5ff 83%, #00f5ff 100%)' },
 ];
 
 export const DEFAULT_BG = BG_PRESETS[0].value;
@@ -94,6 +93,8 @@ export interface Settings {
   backgroundColor: string;
   /** 0.3..1, multiplies dimming overlay (1 = no dim). */
   bgBrightness: number;
+  /** 0..1, opacity of the glass fill on widgets (1 = full glass, 0 = outline only). */
+  trackerOpacity: number;
 }
 
 function createDefaultWidgets(): Widget[] {
@@ -118,11 +119,12 @@ function defaultSettings(): Settings {
     newTurnResetsMana: true,
     newTurnResetsStorm: true,
     keepAwake: false,
-    showSubSteps: false,
+    showSubSteps: true,
     enableHaptics: true,
     fitToScreen: true,
     backgroundColor: DEFAULT_BG,
     bgBrightness: DEFAULT_BG_BRIGHTNESS,
+    trackerOpacity: 1,
   };
 }
 
@@ -453,7 +455,7 @@ export const useStore = create<TrackerState>()(
     }),
     {
       name: 'mtg-tracker-storage',
-      version: 6,
+      version: 7,
       migrate: (persistedState, version) => {
         const state = persistedState as Partial<TrackerState> | undefined;
         if (!state) return persistedState as unknown as TrackerState;
@@ -516,6 +518,24 @@ export const useStore = create<TrackerState>()(
           const settings = state.settings as Partial<Settings> | undefined;
           if (settings && typeof settings.bgBrightness !== 'number') {
             settings.bgBrightness = DEFAULT_BG_BRIGHTNESS;
+          }
+        }
+        if (version < 7) {
+          // Untap/Upkeep/Draw were top-level phases (indices 0/1/2) and are
+          // now sub-steps of the new Beginning phase. Remap so users don't
+          // wake up on a phase that no longer exists.
+          const oldPhase = typeof state.currentPhase === 'number' ? state.currentPhase : 0;
+          const oldSub = typeof state.subPhase === 'number' ? state.subPhase : 0;
+          if (oldPhase <= 2) {
+            state.currentPhase = 0;
+            state.subPhase = Math.max(0, Math.min(2, oldPhase));
+          } else if (oldPhase === 3) { state.currentPhase = 1; state.subPhase = 0; }
+          else if (oldPhase === 4) { state.currentPhase = 2; state.subPhase = oldSub; }
+          else if (oldPhase === 5) { state.currentPhase = 3; state.subPhase = 0; }
+          else if (oldPhase === 6) { state.currentPhase = 4; state.subPhase = oldSub; }
+          const settings = state.settings as Partial<Settings> | undefined;
+          if (settings && typeof settings.trackerOpacity !== 'number') {
+            settings.trackerOpacity = 1;
           }
         }
         return state as TrackerState;
