@@ -58,7 +58,12 @@ export function PhaseTracker({ rowSpan = 1, colSpan = 1 }: Props) {
   return (
     <div
       className="widget-card relative rounded-2xl overflow-hidden h-full w-full flex flex-col min-h-0"
-      style={{ background: 'var(--color-surface)' }}
+      style={{
+        background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 12%, transparent), color-mix(in srgb, var(--color-accent) 5%, transparent)), rgba(255,255,255,0.04)',
+        boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent), 0 0 22px -6px color-mix(in srgb, var(--color-accent) 55%, transparent), 0 4px 18px rgba(0,0,0,0.35)',
+        backdropFilter: 'blur(14px) saturate(140%)',
+        WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+      }}
     >
       {/* Full-area tap zones. Left = previous, right = next. */}
       <button

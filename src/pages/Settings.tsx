@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  useStore, MANA_INFO, BG_PRESETS, vibrate,
+  useStore, MANA_INFO, BG_PRESETS, BG_GRADIENTS, DEFAULT_BG_BRIGHTNESS, vibrate, isHapticSupported,
 } from '../store';
 import { ManaIcon, StormIcon, CounterIcon, HeartIcon, PhaseIcon } from '../components/Symbols';
 
@@ -149,6 +149,7 @@ export function Settings() {
         {/* Background Color */}
         <section>
           <SectionTitle>Background</SectionTitle>
+          <p className="text-[11px] uppercase tracking-wider font-semibold text-text-dim mb-2">Solid</p>
           <div className="grid grid-cols-4 gap-2">
             {BG_PRESETS.map((p) => {
               const active = settings.backgroundColor === p.value;
@@ -169,10 +170,41 @@ export function Settings() {
               );
             })}
           </div>
-          <div className="flex items-center gap-2 mt-3">
+
+          <p className="text-[11px] uppercase tracking-wider font-semibold text-text-dim mt-4 mb-2">3-Color Patterns</p>
+          <div className="grid grid-cols-3 gap-2">
+            {BG_GRADIENTS.map((p) => {
+              const active = settings.backgroundColor === p.value;
+              return (
+                <button
+                  key={p.value}
+                  className={`aspect-[3/2] rounded-xl transition-all relative overflow-hidden
+                    ${active ? 'ring-2 ring-accent ring-offset-2 ring-offset-bg' : 'ring-1 ring-border'}`}
+                  style={{
+                    background: p.value,
+                    backgroundSize: '200% 200%',
+                    animation: 'bg-shift 14s ease-in-out infinite',
+                  }}
+                  onClick={() => setBg(p.value)}
+                  aria-label={p.label}
+                  title={p.label}
+                >
+                  <span className="absolute bottom-1 left-1.5 text-[10px] font-bold text-white/85 drop-shadow">
+                    {p.label}
+                  </span>
+                  {active && (
+                    <span className="absolute top-1 right-1 text-white text-xs">✓</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <p className="text-[11px] uppercase tracking-wider font-semibold text-text-dim mt-4 mb-2">Custom</p>
+          <div className="flex items-center gap-2">
             <input
               type="color"
-              value={customColor || '#0e0e15'}
+              value={customColor && !customColor.includes('gradient') ? customColor : '#0e0e15'}
               onChange={(e) => setCustomColor(e.target.value)}
               onBlur={(e) => setBg(e.target.value)}
               className="w-10 h-10 rounded-lg border border-border bg-surface cursor-pointer"
@@ -185,6 +217,30 @@ export function Settings() {
               onClick={() => setBg(customColor)}
             >
               Apply
+            </button>
+          </div>
+
+          <p className="text-[11px] uppercase tracking-wider font-semibold text-text-dim mt-4 mb-2">Brightness</p>
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface">
+            <span className="text-xs text-text-dim w-7 text-right tabular-nums">
+              {Math.round((settings.bgBrightness ?? DEFAULT_BG_BRIGHTNESS) * 100)}%
+            </span>
+            <input
+              type="range"
+              min={0.3}
+              max={1}
+              step={0.05}
+              value={settings.bgBrightness ?? DEFAULT_BG_BRIGHTNESS}
+              onChange={(e) => updateSettings({ bgBrightness: parseFloat(e.target.value) })}
+              className="flex-1 accent-accent"
+              aria-label="Background brightness"
+            />
+            <button
+              className="px-2 py-1 rounded-md bg-white/5 text-text-secondary text-[11px] font-semibold
+                         hover:bg-white/10"
+              onClick={() => { vibrate(10); updateSettings({ bgBrightness: 1 }); }}
+            >
+              Reset
             </button>
           </div>
         </section>
@@ -235,6 +291,21 @@ export function Settings() {
               checked={settings.enableHaptics}
               onChange={(v) => updateSettings({ enableHaptics: v })}
             />
+            <button
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-surface
+                         hover:bg-surface-hover transition-colors disabled:opacity-50"
+              onClick={() => {
+                if (!isHapticSupported()) return;
+                // A noticeable pulse pattern: short, gap, longer.
+                vibrate([40, 50, 90]);
+              }}
+              disabled={!isHapticSupported()}
+            >
+              <span className="text-sm text-text-primary text-left">Test haptic pulse</span>
+              <span className="text-[11px] uppercase tracking-wider font-semibold text-accent">
+                {isHapticSupported() ? 'Tap' : 'Unavailable'}
+              </span>
+            </button>
             <ToggleRow
               label="Keep screen awake"
               checked={settings.keepAwake}
@@ -243,6 +314,9 @@ export function Settings() {
           </div>
           <p className="text-xs text-text-dim mt-2">
             Fit-to-screen resizes trackers to fill the viewport in portrait or landscape — turn it off if you prefer scrolling.
+            {!isHapticSupported() && (
+              <> Haptics need a browser that implements the Vibration API (Android Chrome/Firefox). iOS Safari does not expose vibration to web apps.</>
+            )}
           </p>
         </section>
 

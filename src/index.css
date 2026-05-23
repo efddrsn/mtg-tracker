@@ -55,6 +55,37 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   box-sizing: border-box;
+  position: relative;
+}
+
+/* Dim overlay that adjusts background brightness without dimming widgets. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: #000;
+  opacity: var(--bg-dim, 0);
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 250ms ease;
+}
+
+.app-shell {
+  position: relative;
+  z-index: 1;
+}
+
+/* Slow drift for 3-color gradient backgrounds. */
+@keyframes bg-shift {
+  0%   { background-position: 0% 0%; }
+  50%  { background-position: 100% 100%; }
+  100% { background-position: 0% 0%; }
+}
+body.bg-animated {
+  animation: bg-shift 28s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  body.bg-animated { animation: none; }
 }
 
 .app-shell {
