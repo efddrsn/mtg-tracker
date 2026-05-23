@@ -5,6 +5,7 @@ interface Props {
   value: number;
   label: string;
   icon?: ReactNode;
+  /** Unused — widgets are translucent now. Kept for API compat. */
   bgColor?: string;
   accentColor?: string;
   onInc: () => void;
@@ -17,7 +18,6 @@ export function CounterWidget({
   value,
   label,
   icon,
-  bgColor = 'var(--color-surface)',
   accentColor = 'var(--color-accent)',
   onInc,
   onDec,
@@ -38,15 +38,24 @@ export function CounterWidget({
 
   const hintSize = area >= 4 ? 'text-3xl' : area >= 2 ? 'text-2xl' : 'text-xl';
 
+  // Compose a glass-style background and accent glow that picks up the
+  // mana/storm/life color so the widget reads against any backdrop.
+  const containerStyle: React.CSSProperties = {
+    background: `linear-gradient(180deg, color-mix(in srgb, ${accentColor} 14%, transparent), color-mix(in srgb, ${accentColor} 6%, transparent)), rgba(255,255,255,0.04)`,
+    boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${accentColor} 55%, transparent), 0 0 22px -6px color-mix(in srgb, ${accentColor} 65%, transparent), 0 4px 18px rgba(0,0,0,0.35)`,
+    backdropFilter: 'blur(14px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+  };
+
   return (
     <div
       className="widget-card relative rounded-2xl overflow-hidden h-full w-full"
-      style={{ background: bgColor }}
+      style={containerStyle}
     >
       {icon && (
         <div
           className="absolute inset-0 flex items-center justify-center pointer-events-none"
-          style={{ color: accentColor, opacity: 0.32 }}
+          style={{ color: accentColor, opacity: 0.38 }}
           aria-hidden
         >
           <div className="w-[72%] h-[72%]">
@@ -61,7 +70,7 @@ export function CounterWidget({
         aria-label={`Decrease ${label}`}
       >
         <span
-          className={`${hintSize} font-bold leading-none opacity-40`}
+          className={`${hintSize} font-bold leading-none opacity-50`}
           style={{ color: accentColor }}
         >
           −
@@ -73,7 +82,7 @@ export function CounterWidget({
         aria-label={`Increase ${label}`}
       >
         <span
-          className={`${hintSize} font-bold leading-none opacity-40`}
+          className={`${hintSize} font-bold leading-none opacity-50`}
           style={{ color: accentColor }}
         >
           +
@@ -83,7 +92,10 @@ export function CounterWidget({
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <span
           className={`${valueSize} font-bold tabular-nums leading-none`}
-          style={{ color: value === 0 ? 'var(--color-text-dim)' : accentColor }}
+          style={{
+            color: value === 0 ? 'rgba(255,255,255,0.45)' : accentColor,
+            textShadow: value === 0 ? 'none' : `0 0 18px color-mix(in srgb, ${accentColor} 55%, transparent)`,
+          }}
         >
           {value}
         </span>

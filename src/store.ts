@@ -68,7 +68,18 @@ export const BG_PRESETS: { label: string; value: string }[] = [
   { label: 'Charcoal', value: '#171717' },
 ];
 
+/** Three-color gradients that slowly drift via the `bg-animated` CSS class. */
+export const BG_GRADIENTS: { label: string; value: string }[] = [
+  { label: 'Twilight', value: 'linear-gradient(165deg, #0a0a1f 0%, #1a0e2e 50%, #2d1b40 100%)' },
+  { label: 'Aurora',   value: 'linear-gradient(135deg, #001f3f 0%, #1a3a5c 50%, #0f4a4a 100%)' },
+  { label: 'Crimson',  value: 'linear-gradient(180deg, #050505 0%, #1f060a 50%, #3a0d0d 100%)' },
+  { label: 'Verdant',  value: 'linear-gradient(180deg, #0a1f0e 0%, #0e2d18 50%, #1a3a24 100%)' },
+  { label: 'Cosmos',   value: 'linear-gradient(135deg, #050511 0%, #1a0a2e 50%, #2e0a4a 100%)' },
+  { label: 'Ember',    value: 'linear-gradient(180deg, #0a0505 0%, #2d0a05 50%, #3d1a0a 100%)' },
+];
+
 export const DEFAULT_BG = BG_PRESETS[0].value;
+export const DEFAULT_BG_BRIGHTNESS = 1;
 
 export interface Settings {
   columns: 2 | 3 | 4;
@@ -81,6 +92,8 @@ export interface Settings {
   enableHaptics: boolean;
   fitToScreen: boolean;
   backgroundColor: string;
+  /** 0.3..1, multiplies dimming overlay (1 = no dim). */
+  bgBrightness: number;
 }
 
 function createDefaultWidgets(): Widget[] {
@@ -109,7 +122,14 @@ function defaultSettings(): Settings {
     enableHaptics: true,
     fitToScreen: true,
     backgroundColor: DEFAULT_BG,
+    bgBrightness: DEFAULT_BG_BRIGHTNESS,
   };
+}
+
+/** Best-effort haptic. iOS Safari does not implement navigator.vibrate. */
+export function isHapticSupported(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return typeof (navigator as Navigator & { vibrate?: unknown }).vibrate === 'function';
 }
 
 export function clampColSpan(span: number, columns: number): number {
@@ -164,10 +184,16 @@ interface TrackerState {
   cycleWidgetColSpan: (id: string) => void;
 }
 
-export function vibrate(ms = 10) {
+type VibrateFn = (pattern: number | number[]) => boolean;
+
+export function vibrate(ms: number | number[] = 10) {
   try {
-    if (!useStore.getState().settings.enableHaptics) return;
-    navigator.vibrate?.(ms);
+    const settings = useStore.getState()?.settings;
+    if (settings && settings.enableHaptics === false) return;
+    if (typeof navigator === 'undefined') return;
+    const v = (navigator as unknown as { vibrate?: VibrateFn }).vibrate;
+    if (typeof v !== 'function') return;
+    v.call(navigator, ms);
   } catch { /* noop */ }
 }
 
@@ -427,7 +453,7 @@ export const useStore = create<TrackerState>()(
     }),
     {
       name: 'mtg-tracker-storage',
-      version: 5,
+      version: 6,
       migrate: (persistedState, version) => {
         const state = persistedState as Partial<TrackerState> | undefined;
         if (!state) return persistedState as unknown as TrackerState;
@@ -484,6 +510,12 @@ export const useStore = create<TrackerState>()(
             if (typeof settings.enableHaptics !== 'boolean') settings.enableHaptics = true;
             if (typeof settings.fitToScreen !== 'boolean') settings.fitToScreen = true;
             if (typeof settings.backgroundColor !== 'string') settings.backgroundColor = DEFAULT_BG;
+          }
+        }
+        if (version < 6) {
+          const settings = state.settings as Partial<Settings> | undefined;
+          if (settings && typeof settings.bgBrightness !== 'number') {
+            settings.bgBrightness = DEFAULT_BG_BRIGHTNESS;
           }
         }
         return state as TrackerState;
