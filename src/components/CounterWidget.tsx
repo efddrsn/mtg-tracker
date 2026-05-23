@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useRepeatAction } from '../hooks/useRepeatAction';
+import { useStore } from '../store';
 
 interface Props {
   value: number;
@@ -26,6 +27,7 @@ export function CounterWidget({
 }: Props) {
   const decRepeat = useRepeatAction(onDec);
   const incRepeat = useRepeatAction(onInc);
+  const opacity = useStore((s) => s.settings.trackerOpacity ?? 1);
 
   const area = colSpan * rowSpan;
   const valueSize = area >= 6
@@ -38,13 +40,16 @@ export function CounterWidget({
 
   const hintSize = area >= 4 ? 'text-3xl' : area >= 2 ? 'text-2xl' : 'text-xl';
 
-  // Compose a glass-style background and accent glow that picks up the
-  // mana/storm/life color so the widget reads against any backdrop.
+  // Glass fill scales with opacity; border + glow stay visible so the widget
+  // still has a defined edge even when the fill is fully transparent.
+  const fillTop = 14 * opacity;
+  const fillBot = 6 * opacity;
+  const whiteFill = 0.04 * opacity;
   const containerStyle: React.CSSProperties = {
-    background: `linear-gradient(180deg, color-mix(in srgb, ${accentColor} 14%, transparent), color-mix(in srgb, ${accentColor} 6%, transparent)), rgba(255,255,255,0.04)`,
+    background: `linear-gradient(180deg, color-mix(in srgb, ${accentColor} ${fillTop}%, transparent), color-mix(in srgb, ${accentColor} ${fillBot}%, transparent)), rgba(255,255,255,${whiteFill})`,
     boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${accentColor} 55%, transparent), 0 0 22px -6px color-mix(in srgb, ${accentColor} 65%, transparent), 0 4px 18px rgba(0,0,0,0.35)`,
-    backdropFilter: 'blur(14px) saturate(140%)',
-    WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+    backdropFilter: opacity > 0.05 ? 'blur(14px) saturate(140%)' : 'none',
+    WebkitBackdropFilter: opacity > 0.05 ? 'blur(14px) saturate(140%)' : 'none',
   };
 
   return (
