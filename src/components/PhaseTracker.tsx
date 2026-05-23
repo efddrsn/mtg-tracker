@@ -9,13 +9,11 @@ interface Props {
 export function PhaseTracker({ rowSpan = 1, colSpan = 1 }: Props) {
   const currentPhase = useStore((s) => s.currentPhase);
   const subPhase = useStore((s) => s.subPhase);
-  const setPhase = useStore((s) => s.setPhase);
   const nextPhase = useStore((s) => s.nextPhase);
   const prevPhase = useStore((s) => s.prevPhase);
-  const setSubPhase = useStore((s) => s.setSubPhase);
   const turn = useStore((s) => s.turn);
   const showSubSteps = useStore((s) => s.settings.showSubSteps);
-  const activeRef = useRef<HTMLButtonElement>(null);
+  const activeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
@@ -29,7 +27,6 @@ export function PhaseTracker({ rowSpan = 1, colSpan = 1 }: Props) {
   const subs = SUB_STEPS[currentPhaseName];
   const hasSubs = showSubSteps && subs.length > 0;
 
-  // Size scales with widget area.
   const phaseChipCls = huge
     ? 'px-4 py-2 text-base'
     : big
@@ -63,7 +60,7 @@ export function PhaseTracker({ rowSpan = 1, colSpan = 1 }: Props) {
       className="widget-card relative rounded-2xl overflow-hidden h-full w-full flex flex-col min-h-0"
       style={{ background: 'var(--color-surface)' }}
     >
-      {/* Full-area tap zones (under the chips). Left = previous, right = next. */}
+      {/* Full-area tap zones. Left = previous, right = next. */}
       <button
         className="counter-btn absolute inset-y-0 left-0 w-1/2 z-0 flex items-center justify-start pl-2 select-none"
         onClick={prevPhase}
@@ -79,7 +76,7 @@ export function PhaseTracker({ rowSpan = 1, colSpan = 1 }: Props) {
         <span className={`${edgeHintSize} font-bold leading-none text-text-dim opacity-50`} aria-hidden>›</span>
       </button>
 
-      {/* Turn indicator (sits above tap zones, pass-through except its own chip). */}
+      {/* Turn indicator — display only. */}
       <div
         className={`relative z-10 flex items-baseline justify-center gap-1 shrink-0 pointer-events-none
                    ${expanded ? 'pt-2 pb-1' : 'pt-1 pb-0.5'}`}
@@ -92,7 +89,7 @@ export function PhaseTracker({ rowSpan = 1, colSpan = 1 }: Props) {
         </span>
       </div>
 
-      {/* Phase chip row */}
+      {/* Phase row — display only, taps fall through to tap zones. */}
       <div
         className={`relative z-10 flex gap-1 pointer-events-none
                    ${expanded
@@ -104,27 +101,26 @@ export function PhaseTracker({ rowSpan = 1, colSpan = 1 }: Props) {
           const active = i === currentPhase;
           const passed = i < currentPhase;
           return (
-            <button
+            <div
               key={phase}
               ref={active ? activeRef : undefined}
-              className={`phase-chip shrink-0 pointer-events-auto
+              className={`phase-chip shrink-0
                          ${expanded ? `flex-1 min-w-[5rem] ${phaseChipCls}` : phaseChipCls}
-                         rounded-md font-bold select-none whitespace-nowrap
+                         rounded-md font-bold select-none whitespace-nowrap text-center
                          ${active
                            ? 'bg-accent text-white shadow-md shadow-accent/40'
                            : passed
                              ? 'bg-white/[0.04] text-text-dim'
-                             : 'bg-white/[0.08] text-text-secondary hover:bg-white/15'
+                             : 'bg-white/[0.08] text-text-secondary'
                          }`}
-              onClick={(e) => { e.stopPropagation(); setPhase(i); }}
             >
               {phase}
-            </button>
+            </div>
           );
         })}
       </div>
 
-      {/* Sub-step row */}
+      {/* Sub-step row — display only. */}
       {hasSubs && (
         <div
           className={`relative z-10 flex gap-1.5 items-center overflow-x-auto scroll-hide pointer-events-none
@@ -134,20 +130,19 @@ export function PhaseTracker({ rowSpan = 1, colSpan = 1 }: Props) {
             const active = i === subPhase;
             const passed = i < subPhase;
             return (
-              <button
+              <div
                 key={step}
-                className={`shrink-0 pointer-events-auto rounded-full font-semibold whitespace-nowrap
+                className={`shrink-0 rounded-full font-semibold whitespace-nowrap text-center
                            transition-all duration-150 ${subStepChipCls}
                            ${active
                              ? 'bg-gradient-to-r from-accent to-accent-hover text-white shadow shadow-accent/50 scale-105'
                              : passed
                                ? 'bg-white/[0.04] text-text-dim'
-                               : 'bg-white/[0.08] text-text-secondary hover:bg-white/15'
+                               : 'bg-white/[0.08] text-text-secondary'
                            }`}
-                onClick={(e) => { e.stopPropagation(); setSubPhase(i); }}
               >
                 {step}
-              </button>
+              </div>
             );
           })}
         </div>

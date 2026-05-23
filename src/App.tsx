@@ -2,10 +2,16 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Tracker } from './pages/Tracker';
 import { Settings } from './pages/Settings';
-import { useStore } from './store';
+import { useStore, DEFAULT_BG } from './store';
 
 function App() {
   const keepAwake = useStore((s) => s.settings.keepAwake);
+  const backgroundColor = useStore((s) => s.settings.backgroundColor);
+
+  useEffect(() => {
+    document.body.style.background = backgroundColor || DEFAULT_BG;
+    return () => { document.body.style.background = ''; };
+  }, [backgroundColor]);
 
   useEffect(() => {
     if (!keepAwake) return;

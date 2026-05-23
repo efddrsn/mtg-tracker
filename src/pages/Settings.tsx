@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  useStore, ALL_MANA, MANA_INFO, vibrate,
-  type ManaColor,
+  useStore, MANA_INFO, BG_PRESETS, vibrate,
 } from '../store';
 import { ManaIcon, StormIcon, CounterIcon, HeartIcon, PhaseIcon } from '../components/Symbols';
 
@@ -13,6 +12,7 @@ export function Settings() {
     addCounter, removeCounter, resetAll, resetLife,
   } = useStore();
   const [newCounterName, setNewCounterName] = useState('');
+  const [customColor, setCustomColor] = useState(settings.backgroundColor);
   const navigate = useNavigate();
 
   const handleAddCounter = () => {
@@ -22,13 +22,10 @@ export function Settings() {
     setNewCounterName('');
   };
 
-  const toggleMana = (color: ManaColor) => {
+  const setBg = (value: string) => {
     vibrate(10);
-    const current = settings.enabledMana;
-    const next = current.includes(color)
-      ? current.filter((c) => c !== color)
-      : [...current, color];
-    updateSettings({ enabledMana: next });
+    updateSettings({ backgroundColor: value });
+    setCustomColor(value);
   };
 
   return (
@@ -48,34 +45,7 @@ export function Settings() {
       </header>
 
       <div className="px-3 pt-4 pb-8 space-y-5">
-        {/* Mana Colors */}
-        <section>
-          <SectionTitle>Mana Colors</SectionTitle>
-          <div className="grid grid-cols-3 gap-2">
-            {ALL_MANA.map((color) => {
-              const info = MANA_INFO[color];
-              const active = settings.enabledMana.includes(color);
-              return (
-                <button
-                  key={color}
-                  className={`flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold transition-all
-                    ${active ? '' : 'opacity-40'}`}
-                  style={{
-                    background: info.bgVar,
-                    color: info.colorVar,
-                    boxShadow: active ? `inset 0 0 0 2px ${info.colorVar}` : 'none',
-                  }}
-                  onClick={() => toggleMana(color)}
-                >
-                  <ManaIcon color={color} width="18" height="18" />
-                  <span>{info.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Widget visibility */}
+        {/* Widget visibility (also acts as mana on/off) */}
         <section>
           <SectionTitle>Visible Trackers</SectionTitle>
           <p className="text-xs text-text-dim mb-2">Long-press a tracker on the home screen to reorder or resize.</p>
@@ -176,6 +146,49 @@ export function Settings() {
           )}
         </section>
 
+        {/* Background Color */}
+        <section>
+          <SectionTitle>Background</SectionTitle>
+          <div className="grid grid-cols-4 gap-2">
+            {BG_PRESETS.map((p) => {
+              const active = settings.backgroundColor === p.value;
+              return (
+                <button
+                  key={p.value}
+                  className={`aspect-square rounded-xl transition-all relative
+                    ${active ? 'ring-2 ring-accent ring-offset-2 ring-offset-bg' : 'ring-1 ring-border'}`}
+                  style={{ background: p.value }}
+                  onClick={() => setBg(p.value)}
+                  aria-label={p.label}
+                  title={p.label}
+                >
+                  {active && (
+                    <span className="absolute inset-0 flex items-center justify-center text-white text-base">✓</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-2 mt-3">
+            <input
+              type="color"
+              value={customColor || '#0e0e15'}
+              onChange={(e) => setCustomColor(e.target.value)}
+              onBlur={(e) => setBg(e.target.value)}
+              className="w-10 h-10 rounded-lg border border-border bg-surface cursor-pointer"
+              aria-label="Custom background color"
+            />
+            <span className="text-xs text-text-dim flex-1">Pick a custom color</span>
+            <button
+              className="px-3 py-2 rounded-lg bg-surface text-text-secondary text-xs font-semibold
+                         hover:bg-surface-hover"
+              onClick={() => setBg(customColor)}
+            >
+              Apply
+            </button>
+          </div>
+        </section>
+
         {/* Phase behavior */}
         <section>
           <SectionTitle>Phase Tracker</SectionTitle>
@@ -191,7 +204,7 @@ export function Settings() {
           </p>
         </section>
 
-        {/* Behavior */}
+        {/* New Turn Behavior */}
         <section>
           <SectionTitle>New Turn Behavior</SectionTitle>
           <div className="space-y-2">
@@ -208,19 +221,32 @@ export function Settings() {
           </div>
         </section>
 
+        {/* Layout & Display */}
         <section>
-          <SectionTitle>Display</SectionTitle>
-          <ToggleRow
-            label="Keep screen awake"
-            checked={settings.keepAwake}
-            onChange={(v) => updateSettings({ keepAwake: v })}
-          />
+          <SectionTitle>Layout & Display</SectionTitle>
+          <div className="space-y-2">
+            <ToggleRow
+              label="Fit trackers to screen"
+              checked={settings.fitToScreen}
+              onChange={(v) => updateSettings({ fitToScreen: v })}
+            />
+            <ToggleRow
+              label="Haptic feedback"
+              checked={settings.enableHaptics}
+              onChange={(v) => updateSettings({ enableHaptics: v })}
+            />
+            <ToggleRow
+              label="Keep screen awake"
+              checked={settings.keepAwake}
+              onChange={(v) => updateSettings({ keepAwake: v })}
+            />
+          </div>
           <p className="text-xs text-text-dim mt-2">
-            Prevents your phone from sleeping while the tracker is open.
+            Fit-to-screen resizes trackers to fill the viewport in portrait or landscape — turn it off if you prefer scrolling.
           </p>
         </section>
 
-        {/* Danger Zone */}
+        {/* Reset */}
         <section>
           <SectionTitle>Reset</SectionTitle>
           <div className="space-y-2">

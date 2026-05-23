@@ -57,15 +57,30 @@ export interface Widget {
 export const MAX_ROW_SPAN = 4;
 export const DEFAULT_LIFE = 20;
 
+export const BG_PRESETS: { label: string; value: string }[] = [
+  { label: 'Midnight', value: '#0e0e15' },
+  { label: 'Pure Black', value: '#000000' },
+  { label: 'Slate', value: '#0f172a' },
+  { label: 'Navy', value: '#0a1628' },
+  { label: 'Forest', value: '#0c1f1a' },
+  { label: 'Plum', value: '#1a0c1f' },
+  { label: 'Ember', value: '#1f0e0c' },
+  { label: 'Charcoal', value: '#171717' },
+];
+
+export const DEFAULT_BG = BG_PRESETS[0].value;
+
 export interface Settings {
   columns: 2 | 3 | 4;
-  enabledMana: ManaColor[];
   widgets: Widget[];
   showPhaseTracker: boolean;
   newTurnResetsMana: boolean;
   newTurnResetsStorm: boolean;
   keepAwake: boolean;
   showSubSteps: boolean;
+  enableHaptics: boolean;
+  fitToScreen: boolean;
+  backgroundColor: string;
 }
 
 function createDefaultWidgets(): Widget[] {
@@ -85,13 +100,15 @@ function createDefaultWidgets(): Widget[] {
 function defaultSettings(): Settings {
   return {
     columns: 2,
-    enabledMana: ['W', 'U', 'B', 'R', 'G'],
     widgets: createDefaultWidgets(),
     showPhaseTracker: true,
     newTurnResetsMana: true,
     newTurnResetsStorm: true,
     keepAwake: false,
     showSubSteps: false,
+    enableHaptics: true,
+    fitToScreen: true,
+    backgroundColor: DEFAULT_BG,
   };
 }
 
@@ -148,7 +165,10 @@ interface TrackerState {
 }
 
 export function vibrate(ms = 10) {
-  try { navigator.vibrate?.(ms); } catch { /* noop */ }
+  try {
+    if (!useStore.getState().settings.enableHaptics) return;
+    navigator.vibrate?.(ms);
+  } catch { /* noop */ }
 }
 
 export const useStore = create<TrackerState>()(
@@ -286,7 +306,6 @@ export const useStore = create<TrackerState>()(
       decCounter: (id) => {
         vibrate(12);
         set((s) => ({
-          // Custom counters can go negative (loyalty, commander damage, etc.)
           counters: s.counters.map((c) => c.id === id ? { ...c, value: c.value - 1 } : c),
         }));
       },
@@ -408,7 +427,7 @@ export const useStore = create<TrackerState>()(
     }),
     {
       name: 'mtg-tracker-storage',
-      version: 4,
+      version: 5,
       migrate: (persistedState, version) => {
         const state = persistedState as Partial<TrackerState> | undefined;
         if (!state) return persistedState as unknown as TrackerState;
@@ -449,8 +468,67 @@ export const useStore = create<TrackerState>()(
             }
           }
         }
+        if (version < 5) {
+          const settings = state.settings as (Partial<Settings> & { enabledMana?: ManaColor[] }) | undefined;
+          if (settings) {
+            // Merge legacy enabledMana into per-widget visibility, then drop it.
+            const enabled = settings.enabledMana;
+            if (Array.isArray(enabled) && settings.widgets) {
+              settings.widgets = settings.widgets.map((w) =>
+                w.type === 'mana' && w.manaColor && !enabled.includes(w.manaColor)
+                  ? { ...w, visible: false }
+                  : w
+              );
+            }
+            delete settings.enabledMana;
+            if (typeof settings.enableHaptics !== 'boolean') settings.enableHaptics = true;
+            if (typeof settings.fitToScreen !== 'boolean') settings.fitToScreen = true;
+            if (typeof settings.backgroundColor !== 'string') settings.backgroundColor = DEFAULT_BG;
+          }
+        }
         return state as TrackerState;
       },
     }
   )
 );
+
+/** Greedy CSS-grid-style packer matching `grid-auto-flow: row`. */
+export function calculateGridRows(widgets: Widget[], columns: number): number {
+  const occ: boolean[][] = [];
+  const ensure = (r: number) => { while (occ.length <= r) occ.push(new Array(columns).fill(false)); };
+  const isFree = (r: number, c: number, rs: number, cs: number) => {
+    for (let dr = 0; dr < rs; dr++) {
+      ensure(r + dr);
+      for (let dc = 0; dc < cs; dc++) {
+        if (occ[r + dr][c + dc]) return false;
+      }
+    }
+    return true;
+  };
+  const occupy = (r: number, c: number, rs: number, cs: number) => {
+    for (let dr = 0; dr < rs; dr++) {
+      ensure(r + dr);
+      for (let dc = 0; dc < cs; dc++) occ[r + dr][c + dc] = true;
+    }
+  };
+  let maxRow = 0;
+  for (const w of widgets) {
+    const cs = Math.min(Math.max(1, w.colSpan), columns);
+    const rs = Math.max(1, w.rowSpan);
+    let placed = false;
+    let r = 0;
+    while (!placed) {
+      for (let c = 0; c <= columns - cs; c++) {
+        if (isFree(r, c, rs, cs)) {
+          occupy(r, c, rs, cs);
+          maxRow = Math.max(maxRow, r + rs);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) r++;
+      if (r > 200) break; // safety
+    }
+  }
+  return Math.max(1, maxRow);
+}
