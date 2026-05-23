@@ -77,7 +77,38 @@ export const BG_GRADIENTS: { label: string; value: string }[] = [
   { label: 'Neon CMY', value: 'linear-gradient(110deg, #00f5ff 0%, #00f5ff 22%, #ff00d4 27%, #ff00d4 50%, #fffb00 55%, #fffb00 78%, #00f5ff 83%, #00f5ff 100%)' },
 ];
 
-export const DEFAULT_BG = BG_PRESETS[0].value;
+/** Painterly aurora effects rendered by AuroraLayer (not CSS-only gradients). */
+export const BG_AURORAS: { label: string; value: string; preview: string }[] = [
+  {
+    label: 'Aurora Borealis',
+    value: 'aurora:borealis',
+    preview:
+      'radial-gradient(ellipse 60% 30% at 30% 55%, #4cd9b8 0%, rgba(76,217,184,0.35) 35%, transparent 70%),' +
+      'radial-gradient(ellipse 45% 25% at 65% 35%, #c98ad4 0%, rgba(201,138,212,0.35) 35%, transparent 70%),' +
+      'radial-gradient(ellipse 45% 25% at 80% 70%, #f0a8c8 0%, rgba(240,168,200,0.3) 35%, transparent 70%),' +
+      'linear-gradient(180deg, #07083a 0%, #150c5e 50%, #0a0844 100%)',
+  },
+  {
+    label: 'Aurora Cosmic',
+    value: 'aurora:cosmic',
+    preview:
+      'radial-gradient(ellipse 55% 30% at 25% 40%, #8a5cff 0%, rgba(138,92,255,0.35) 35%, transparent 70%),' +
+      'radial-gradient(ellipse 45% 30% at 65% 65%, #ff5ca8 0%, rgba(255,92,168,0.3) 35%, transparent 70%),' +
+      'radial-gradient(ellipse 40% 25% at 80% 30%, #5cd6ff 0%, rgba(92,214,255,0.35) 35%, transparent 70%),' +
+      'linear-gradient(180deg, #0a0118 0%, #1a0530 60%, #050010 100%)',
+  },
+  {
+    label: 'Aurora Reef',
+    value: 'aurora:reef',
+    preview:
+      'radial-gradient(ellipse 60% 30% at 30% 60%, #ffb05c 0%, rgba(255,176,92,0.32) 35%, transparent 70%),' +
+      'radial-gradient(ellipse 45% 25% at 70% 35%, #ff5c8a 0%, rgba(255,92,138,0.32) 35%, transparent 70%),' +
+      'radial-gradient(ellipse 40% 25% at 50% 80%, #d45cff 0%, rgba(212,92,255,0.3) 35%, transparent 70%),' +
+      'linear-gradient(180deg, #1a0530 0%, #2a0a40 50%, #100525 100%)',
+  },
+];
+
+export const DEFAULT_BG = 'aurora:borealis';
 export const DEFAULT_BG_BRIGHTNESS = 1;
 
 export interface Settings {
@@ -151,6 +182,7 @@ interface TrackerState {
   subPhase: number;
   turn: number;
   life: number;
+  landDrop: boolean;
   counters: CustomCounter[];
   settings: Settings;
 
@@ -170,6 +202,7 @@ interface TrackerState {
   incLife: () => void;
   decLife: () => void;
   resetLife: () => void;
+  toggleLandDrop: () => void;
   addCounter: (name: string) => void;
   removeCounter: (id: string) => void;
   incCounter: (id: string) => void;
@@ -208,6 +241,7 @@ export const useStore = create<TrackerState>()(
       subPhase: 0,
       turn: 1,
       life: DEFAULT_LIFE,
+      landDrop: false,
       counters: [],
       settings: defaultSettings(),
 
@@ -248,6 +282,7 @@ export const useStore = create<TrackerState>()(
               currentPhase: 0,
               subPhase: 0,
               turn: s.turn + 1,
+              landDrop: false,
               ...(s.settings.newTurnResetsMana ? { mana: { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 } } : {}),
               ...(s.settings.newTurnResetsStorm ? { storm: 0 } : {}),
             };
@@ -286,6 +321,7 @@ export const useStore = create<TrackerState>()(
           currentPhase: 0,
           subPhase: 0,
           turn: s.turn + 1,
+          landDrop: false,
           ...(s.settings.newTurnResetsMana ? { mana: { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 } } : {}),
           ...(s.settings.newTurnResetsStorm ? { storm: 0 } : {}),
         }));
@@ -293,12 +329,13 @@ export const useStore = create<TrackerState>()(
 
       prevTurn: () => {
         vibrate(20);
-        set((s) => s.turn > 1 ? { turn: s.turn - 1, currentPhase: 0, subPhase: 0 } : s);
+        set((s) => s.turn > 1 ? { turn: s.turn - 1, currentPhase: 0, subPhase: 0, landDrop: false } : s);
       },
 
       incLife: () => { vibrate(12); set((s) => ({ life: s.life + 1 })); },
       decLife: () => { vibrate(12); set((s) => ({ life: s.life - 1 })); },
       resetLife: () => { vibrate(30); set({ life: DEFAULT_LIFE }); },
+      toggleLandDrop: () => { vibrate(18); set((s) => ({ landDrop: !s.landDrop })); },
 
       addCounter: (name) => {
         vibrate(18);
@@ -353,6 +390,7 @@ export const useStore = create<TrackerState>()(
           subPhase: 0,
           turn: 1,
           life: DEFAULT_LIFE,
+          landDrop: false,
           counters: [],
         });
       },
@@ -455,7 +493,7 @@ export const useStore = create<TrackerState>()(
     }),
     {
       name: 'mtg-tracker-storage',
-      version: 7,
+      version: 8,
       migrate: (persistedState, version) => {
         const state = persistedState as Partial<TrackerState> | undefined;
         if (!state) return persistedState as unknown as TrackerState;
@@ -537,6 +575,9 @@ export const useStore = create<TrackerState>()(
           if (settings && typeof settings.trackerOpacity !== 'number') {
             settings.trackerOpacity = 1;
           }
+        }
+        if (version < 8) {
+          if (typeof state.landDrop !== 'boolean') state.landDrop = false;
         }
         return state as TrackerState;
       },

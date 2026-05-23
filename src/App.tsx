@@ -2,30 +2,30 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Tracker } from './pages/Tracker';
 import { Settings } from './pages/Settings';
+import { AuroraLayer } from './components/AuroraLayer';
 import { useStore, DEFAULT_BG, DEFAULT_BG_BRIGHTNESS } from './store';
+
+function BackgroundLayer() {
+  const bg = useStore((s) => s.settings.backgroundColor) || DEFAULT_BG;
+  if (bg.startsWith('aurora:')) {
+    return <AuroraLayer variant={bg.slice('aurora:'.length)} />;
+  }
+  const isGradient = /gradient\s*\(/i.test(bg);
+  return (
+    <div
+      className={`app-bg-layer ${isGradient ? 'bg-animated' : ''}`}
+      style={{
+        background: bg,
+        backgroundSize: isGradient ? '300% 300%' : undefined,
+      }}
+      aria-hidden
+    />
+  );
+}
 
 function App() {
   const keepAwake = useStore((s) => s.settings.keepAwake);
-  const backgroundColor = useStore((s) => s.settings.backgroundColor);
   const bgBrightness = useStore((s) => s.settings.bgBrightness ?? DEFAULT_BG_BRIGHTNESS);
-
-  useEffect(() => {
-    const value = backgroundColor || DEFAULT_BG;
-    const isGradient = /gradient\s*\(/i.test(value);
-    document.body.style.background = value;
-    if (isGradient) {
-      document.body.style.backgroundSize = '300% 300%';
-      document.body.classList.add('bg-animated');
-    } else {
-      document.body.style.backgroundSize = '';
-      document.body.classList.remove('bg-animated');
-    }
-    return () => {
-      document.body.style.background = '';
-      document.body.style.backgroundSize = '';
-      document.body.classList.remove('bg-animated');
-    };
-  }, [backgroundColor]);
 
   useEffect(() => {
     const dim = Math.max(0, Math.min(1, 1 - bgBrightness));
@@ -69,6 +69,8 @@ function App() {
 
   return (
     <BrowserRouter>
+      <BackgroundLayer />
+      <div className="app-bg-dim" aria-hidden />
       <div className="app-shell flex flex-col h-full">
         <Routes>
           <Route path="/" element={<Tracker />} />
