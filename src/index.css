@@ -426,10 +426,11 @@ input, button, select, textarea {
   color: #fff;
 }
 
-/* Context banner (commander phase / locked commander) */
+/* Context banner (commander phase / locked commander). Anchored to the BOTTOM
+   so it never covers a card's name (which sits at the top of the art). */
 .feed-banner {
   position: absolute;
-  top: calc(env(safe-area-inset-top) + 54px);
+  bottom: calc(env(safe-area-inset-bottom) + 92px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 115;
@@ -499,6 +500,137 @@ input, button, select, textarea {
 .color-pip:disabled {
   opacity: 0.55;
   cursor: default;
+}
+
+/* Config: hint text + decklist import */
+.cfg-hint {
+  font-size: 12px;
+  color: var(--color-text-dim);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+.cfg-textarea {
+  resize: none;
+  font-family: inherit;
+  line-height: 1.5;
+}
+.import-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+.import-btn {
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: none;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.import-btn:disabled { opacity: 0.4; }
+.import-msg {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* Commander name-search overlay */
+.search-modal {
+  position: fixed;
+  z-index: 210;
+  left: 50%;
+  top: calc(env(safe-area-inset-top) + 64px);
+  transform: translateX(-50%);
+  width: min(94vw, 460px);
+  max-height: 72dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-radius: 18px;
+  border: 1px solid var(--color-border);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+}
+.search-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+.search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  color: var(--color-text-primary);
+}
+.search-input::placeholder { color: var(--color-text-dim); }
+.search-skip {
+  flex-shrink: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: none;
+  background: var(--color-surface-alt);
+  color: var(--color-text-secondary);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+.search-results {
+  overflow-y: auto;
+  padding: 6px;
+}
+.search-status {
+  padding: 26px 18px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-text-dim);
+  display: flex;
+  justify-content: center;
+}
+.search-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px;
+  border: none;
+  background: none;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.search-result:active { background: var(--color-surface-hover); }
+.search-result-thumb {
+  width: 42px;
+  height: 59px;
+  border-radius: 5px;
+  object-fit: cover;
+  object-position: top;
+  flex-shrink: 0;
+  background: var(--color-surface-alt);
+}
+.search-result-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.search-result-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-result-type {
+  font-size: 11px;
+  color: var(--color-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Card stage fills the screen */

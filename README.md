@@ -19,11 +19,29 @@ almost the entire screen; everything else stays out of the way.
 - **Commander-first flow** — in Commander, you swipe through legal commanders
   first; picking one **locks the deck to its color identity** and seeds the rest
   of the feed toward its strategy
+- **Commander name search** — already know your commander? An optional,
+  dismissible overlay lets you search by name and jump straight to it
+- **Decklist import** — paste a list you already own (Moxfield/Archidekt style);
+  it seeds your deck, sets the color filter, and teaches the recommender
 - **Distinctive openers** — non-Commander formats start with famous *colored*
   cards (rare/mythic), skipping generic colorless staples like Sol Ring
 - **Adaptive recommendations** — a lightweight, on-device preference model
-  learns from every yes/no (card types, mana value, keywords, themes, colors)
-  and re-ranks the upcoming cards in real time
+  learns from every yes/no and re-ranks the upcoming cards in real time
+
+### How the recommender works
+
+The base order of the feed is **EDHREC popularity** (`order:edhrec`) — the
+playability/power signal. On top of that, a transparent on-device preference
+model (`src/deck/recommender.ts`) re-ranks the upcoming cards from your swipes.
+Each yes/no nudges feature weights describing a card's **synergy** (oracle-text
+themes like tokens/sacrifice/ramp, and keywords), **efficiency** (mana-value
+buckets), and **role** (broad card type, color). Among equally on-theme cards,
+EDHREC rank breaks the tie, so power still wins.
+
+Deliberately *not* considered: set, rarity, flavor, or art. Creature **type** is
+ignored too — unless the deck proves it's tribal (a subtype only starts
+mattering once several liked cards share it), so a lone creature you liked won't
+flood the feed with its kindred.
 - **Undo**, tap-to-flip double-faced cards, and on-screen buttons as fallbacks
 - **Persistent** — your commander, deck, rejections, learned tastes, and filters
   all survive reloads

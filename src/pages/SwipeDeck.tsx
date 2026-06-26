@@ -1,8 +1,9 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SwipeCard } from '../components/SwipeCard';
 import { ConfigSheet } from '../components/ConfigSheet';
 import { DeckSheet } from '../components/DeckSheet';
+import { CommanderSearch } from '../components/CommanderSearch';
 import { useRecommendationFeed } from '../deck/useFeed';
 import { useDeckStore } from '../deck/deckStore';
 import type { DeckCard } from '../deck/scryfall';
@@ -39,6 +40,19 @@ export function SwipeDeck() {
   const [deckOpen, setDeckOpen] = useState(false);
   const [configDragY, setConfigDragY] = useState(0);
   const [deckDragY, setDeckDragY] = useState(0);
+  const [searchOpen, setSearchOpen] = useState(false);
+  // Auto-offer the commander search once when entering the commander phase.
+  const autoOffered = useRef(false);
+
+  // Offer the name search the first time we land in the commander phase; the
+  // player can dismiss it and swipe instead.
+  useEffect(() => {
+    if (pickingCommander && !autoOffered.current) {
+      autoOffered.current = true;
+      setSearchOpen(true);
+    }
+    if (!pickingCommander) autoOffered.current = false;
+  }, [pickingCommander]);
 
   // Transient gesture state kept in refs to avoid stale-closure bugs.
   const start = useRef({ x: 0, y: 0 });
@@ -265,9 +279,14 @@ export function SwipeDeck() {
 
       {/* Context banner: what the feed is currently doing */}
       {pickingCommander ? (
-        <div className="feed-banner feed-banner-commander">
+        <button
+          type="button"
+          className="feed-banner feed-banner-commander"
+          onClick={() => setSearchOpen(true)}
+        >
           ⚜ Choose your commander
-        </div>
+          <span className="feed-banner-change">🔍 search</span>
+        </button>
       ) : commander ? (
         <button
           type="button"
@@ -288,11 +307,11 @@ export function SwipeDeck() {
       >
         {renderStack()}
 
-        {/* Edge hints */}
+        {/* Edge hints — suppressed when a context banner occupies that edge */}
+        <div className="swipe-hint swipe-hint-top">▼ filters</div>
         {!pickingCommander && !commander && (
-          <div className="swipe-hint swipe-hint-top">▼ filters</div>
+          <div className="swipe-hint swipe-hint-bottom">▲ deck</div>
         )}
-        <div className="swipe-hint swipe-hint-bottom">▲ deck</div>
       </div>
 
       {/* Action buttons (fallback / accessibility) */}
@@ -327,6 +346,7 @@ export function SwipeDeck() {
 
       <ConfigSheet open={configOpen} dragY={configDragY} onClose={() => setConfigOpen(false)} />
       <DeckSheet open={deckOpen} dragY={deckDragY} onClose={() => setDeckOpen(false)} />
+      {searchOpen && <CommanderSearch onClose={() => setSearchOpen(false)} />}
     </div>
   );
 }
