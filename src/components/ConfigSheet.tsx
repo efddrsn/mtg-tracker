@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { useDeckStore } from '../deck/deckStore';
 import {
   ALL_COLORS,
   CARD_KINDS,
   FORMATS,
+  fetchCardsByName,
+  parseDecklist,
   type ColorCode,
 } from '../deck/scryfall';
 
@@ -30,10 +33,34 @@ export function ConfigSheet({ open, dragY, onClose }: ConfigSheetProps) {
   const setTheme = useDeckStore((s) => s.setTheme);
   const setHideBasics = useDeckStore((s) => s.setHideBasics);
   const clearCommander = useDeckStore((s) => s.clearCommander);
+  const importCards = useDeckStore((s) => s.importCards);
   const resetConfig = useDeckStore((s) => s.resetConfig);
 
   // Colors are dictated by the commander once one is chosen.
   const colorsLocked = !!commander;
+
+  const [importText, setImportText] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState('');
+
+  const doImport = async () => {
+    const names = parseDecklist(importText);
+    if (names.length === 0) return;
+    setImporting(true);
+    setImportMsg('');
+    try {
+      const { cards, notFound } = await fetchCardsByName(names);
+      importCards(cards);
+      const parts = [`Imported ${cards.length}`];
+      if (notFound.length) parts.push(`${notFound.length} not found`);
+      setImportMsg(parts.join(' · '));
+      if (cards.length) setImportText('');
+    } catch {
+      setImportMsg('Import failed — check your connection.');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   // When open, sheet sits at 0. When closed, it's hidden above the viewport,
   // peeking down by dragY while the user pulls.
@@ -182,6 +209,37 @@ export function ConfigSheet({ open, dragY, onClose }: ConfigSheetProps) {
               />
               <span>Hide basic lands</span>
             </label>
+          </section>
+
+          <section className="cfg-section">
+            <label className="cfg-label" htmlFor="import-input">
+              Import a decklist
+            </label>
+            <p className="cfg-hint">
+              Paste cards you already own — they seed your deck, set the colors,
+              and teach the recommender what you like.
+            </p>
+            <textarea
+              id="import-input"
+              className="cfg-input cfg-textarea"
+              placeholder={'1 Sol Ring\n1 Cyclonic Rift\nLightning Bolt'}
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              autoCapitalize="none"
+              autoCorrect="off"
+              rows={4}
+            />
+            <div className="import-row">
+              <button
+                type="button"
+                className="import-btn"
+                onClick={doImport}
+                disabled={importing || importText.trim().length === 0}
+              >
+                {importing ? 'Importing…' : 'Import cards'}
+              </button>
+              {importMsg && <span className="import-msg">{importMsg}</span>}
+            </div>
           </section>
 
           <button type="button" className="sheet-done-btn" onClick={onClose}>

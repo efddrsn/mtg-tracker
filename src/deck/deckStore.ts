@@ -49,6 +49,9 @@ interface DeckState {
   reject: (card: DeckCard) => void;
   // Pass on a card without training the preference model (used for commanders).
   skip: (card: DeckCard) => void;
+  // Import a pasted decklist: adds to deck, seeds the preference model, and
+  // (when no commander is set) sets the color filter from the cards' identities.
+  importCards: (cards: DeckCard[]) => void;
   removeFromDeck: (oracleId: string) => void;
   clearDeck: () => void;
 
@@ -171,6 +174,44 @@ export const useDeckStore = create<DeckState>()(
             rejected: s.rejected.includes(card.oracleId)
               ? s.rejected
               : [card.oracleId, ...s.rejected].slice(0, REJECTED_CAP),
+          }));
+        },
+        importCards: (cards) => {
+          if (cards.length === 0) return;
+          set((s) => {
+            const existing = new Set(s.deck.map((c) => c.oracleId));
+            const now = Date.now();
+            const added = cards
+              .filter((c) => !existing.has(c.oracleId))
+              .map((c) => ({ ...c, addedAt: now }));
+
+            let prefs = s.prefs;
+            for (const c of cards) prefs = applyToPrefs(prefs, c, true);
+
+            const rejected = [
+              ...new Set([...cards.map((c) => c.oracleId), ...s.rejected]),
+            ].slice(0, REJECTED_CAP);
+
+            // Widen the color filter to cover the imported cards — unless a
+            // commander already dictates the identity.
+            let colors = s.config.colors;
+            if (!s.commander) {
+              const set5 = new Set<ColorCode>(colors);
+              for (const c of cards) for (const ci of c.colorIdentity) set5.add(ci);
+              colors = [...set5];
+            }
+
+            return {
+              deck: [...added, ...s.deck],
+              prefs,
+              rejected,
+              config: { ...s.config, colors },
+              swipeCount: s.swipeCount + cards.length,
+            };
+          });
+          set((s) => ({
+            configVersion: s.configVersion + 1,
+            prefsVersion: s.prefsVersion + 1,
           }));
         },
         removeFromDeck: (oracleId) => {

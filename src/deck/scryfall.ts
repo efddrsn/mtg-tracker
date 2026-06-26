@@ -315,3 +315,85 @@ export async function fetchNextPage(
 ): Promise<RecommendationPage> {
   return toPage(await request(nextPage, signal));
 }
+
+// Search legal commanders by (partial) name — powers the "find my commander"
+// overlay so a player who already knows their commander can jump straight to it.
+export async function searchCommanders(
+  name: string,
+  signal?: AbortSignal,
+): Promise<DeckCard[]> {
+  const term = name.trim();
+  if (!term) return [];
+  const params = new URLSearchParams({
+    q: `is:commander ${term}`,
+    order: 'edhrec',
+    dir: 'asc',
+    unique: 'cards',
+  });
+  const body = await request(`${SEARCH_URL}?${params.toString()}`, signal);
+  return (body.data ?? [])
+    .filter((c) => c.image_uris || c.card_faces)
+    .map(normalize)
+    .slice(0, 12);
+}
+
+// --- Decklist import --------------------------------------------------------
+
+const COLLECTION_URL = 'https://api.scryfall.com/cards/collection';
+
+interface ScryfallCollection {
+  data?: ScryfallCard[];
+  not_found?: { name?: string }[];
+  details?: string;
+}
+
+// Parse a pasted decklist into bare card names. Tolerates the common export
+// shapes: "1 Sol Ring", "1x Sol Ring", "Sol Ring (C21) 263", "// Commander",
+// "SB: ...", trailing foil markers, etc.
+export function parseDecklist(text: string): string[] {
+  const names: string[] = [];
+  for (const raw of text.split('\n')) {
+    let line = raw.trim();
+    if (!line || line.startsWith('//') || line.startsWith('#')) continue;
+    line = line.replace(/^sb:\s*/i, '');
+    line = line.replace(/^\s*\d+\s*x?\s+/i, ''); // leading quantity
+    line = line.replace(/\s*\([^)]*\)\s*[\w-]*\s*$/i, ''); // (SET) 123
+    line = line.replace(/\s*\[[^\]]*\]\s*$/i, ''); // [tags]
+    line = line.replace(/\s*\*?f\*?\s*$/i, ''); // foil marker
+    line = line.split('//')[0].trim(); // front face of DFCs
+    if (line) names.push(line);
+  }
+  return names;
+}
+
+export interface ImportResult {
+  cards: DeckCard[];
+  notFound: string[];
+}
+
+// Resolve card names to full cards via Scryfall's collection endpoint
+// (batched at the 75-identifier limit).
+export async function fetchCardsByName(
+  names: string[],
+  signal?: AbortSignal,
+): Promise<ImportResult> {
+  const unique = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
+  const cards: DeckCard[] = [];
+  const notFound: string[] = [];
+  for (let i = 0; i < unique.length; i += 75) {
+    const chunk = unique.slice(i, i + 75);
+    const res = await fetch(COLLECTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ identifiers: chunk.map((name) => ({ name })) }),
+      signal,
+    });
+    const body = (await res.json()) as ScryfallCollection;
+    if (!res.ok) {
+      throw new ScryfallError(body.details ?? `Scryfall error ${res.status}`, res.status);
+    }
+    for (const c of body.data ?? []) cards.push(normalize(c));
+    for (const nf of body.not_found ?? []) if (nf.name) notFound.push(nf.name);
+  }
+  return { cards, notFound };
+}
