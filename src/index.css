@@ -426,6 +426,81 @@ input, button, select, textarea {
   color: #fff;
 }
 
+/* Context banner (commander phase / locked commander) */
+.feed-banner {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 54px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 115;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 86vw;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: rgba(10, 10, 18, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+}
+.feed-banner-commander {
+  color: #fcd34d;
+  border-color: rgba(252, 211, 77, 0.4);
+}
+.feed-banner-active {
+  cursor: pointer;
+}
+.feed-banner-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fcd34d;
+}
+.feed-banner-change {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+/* Commander row in the config sheet */
+.cfg-commander {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--color-surface-alt);
+}
+.cfg-commander-thumb {
+  width: 34px;
+  height: 48px;
+  border-radius: 5px;
+  object-fit: cover;
+  object-position: top;
+  flex-shrink: 0;
+}
+.cfg-commander-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.color-pip:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 /* Card stage fills the screen */
 .card-stage {
   position: relative;
@@ -503,6 +578,10 @@ input, button, select, textarea {
   left: 22px;
   color: #4ade80;
   transform: rotate(-15deg);
+}
+.swipe-badge-wide {
+  font-size: 20px;
+  letter-spacing: 0.04em;
 }
 .swipe-badge-nope {
   right: 22px;

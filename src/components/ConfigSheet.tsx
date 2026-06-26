@@ -22,13 +22,18 @@ interface ConfigSheetProps {
 
 export function ConfigSheet({ open, dragY, onClose }: ConfigSheetProps) {
   const config = useDeckStore((s) => s.config);
+  const commander = useDeckStore((s) => s.commander);
   const setFormat = useDeckStore((s) => s.setFormat);
   const toggleColor = useDeckStore((s) => s.toggleColor);
   const setColorRule = useDeckStore((s) => s.setColorRule);
   const toggleKind = useDeckStore((s) => s.toggleKind);
   const setTheme = useDeckStore((s) => s.setTheme);
   const setHideBasics = useDeckStore((s) => s.setHideBasics);
+  const clearCommander = useDeckStore((s) => s.clearCommander);
   const resetConfig = useDeckStore((s) => s.resetConfig);
+
+  // Colors are dictated by the commander once one is chosen.
+  const colorsLocked = !!commander;
 
   // When open, sheet sits at 0. When closed, it's hidden above the viewport,
   // peeking down by dragY while the user pulls.
@@ -76,8 +81,29 @@ export function ConfigSheet({ open, dragY, onClose }: ConfigSheetProps) {
             </div>
           </section>
 
+          {commander && (
+            <section className="cfg-section">
+              <label className="cfg-label">Commander</label>
+              <div className="cfg-commander">
+                {commander.image && (
+                  <img src={commander.image} alt="" className="cfg-commander-thumb" />
+                )}
+                <span className="cfg-commander-name">{commander.name}</span>
+                <button
+                  type="button"
+                  className="sheet-text-btn"
+                  onClick={clearCommander}
+                >
+                  Change
+                </button>
+              </div>
+            </section>
+          )}
+
           <section className="cfg-section">
-            <label className="cfg-label">Colors</label>
+            <label className="cfg-label">
+              {colorsLocked ? 'Colors (locked to commander)' : 'Colors'}
+            </label>
             <div className="color-row">
               {ALL_COLORS.map((c) => {
                 const on = config.colors.includes(c);
@@ -87,7 +113,8 @@ export function ConfigSheet({ open, dragY, onClose }: ConfigSheetProps) {
                     type="button"
                     className={`color-pip ${on ? 'color-pip-on' : ''}`}
                     style={{ '--pip': COLOR_META[c].var } as React.CSSProperties}
-                    onClick={() => toggleColor(c)}
+                    onClick={() => !colorsLocked && toggleColor(c)}
+                    disabled={colorsLocked}
                     aria-label={COLOR_META[c].name}
                     aria-pressed={on}
                   >

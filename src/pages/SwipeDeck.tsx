@@ -24,8 +24,14 @@ export function SwipeDeck() {
   const feed = useRecommendationFeed();
   const addToDeck = useDeckStore((s) => s.addToDeck);
   const reject = useDeckStore((s) => s.reject);
+  const skip = useDeckStore((s) => s.skip);
+  const setCommander = useDeckStore((s) => s.setCommander);
+  const clearCommander = useDeckStore((s) => s.clearCommander);
   const removeFromDeck = useDeckStore((s) => s.removeFromDeck);
   const deckCount = useDeckStore((s) => s.deck.length);
+  const commander = useDeckStore((s) => s.commander);
+
+  const pickingCommander = feed.phase === 'commander-select';
 
   const [drag, setDrag] = useState({ x: 0, y: 0 });
   const [animate, setAnimate] = useState(false);
@@ -53,8 +59,16 @@ export function SwipeDeck() {
       busy.current = true;
       vibrate(decision === 'add' ? 18 : 10);
 
-      if (decision === 'add') addToDeck(card);
-      else reject(card);
+      if (decision === 'add') {
+        // A "yes" in the commander phase locks in the commander and pivots the
+        // whole feed to its color identity; otherwise it's a normal deck add.
+        if (pickingCommander) setCommander(card);
+        else addToDeck(card);
+      } else {
+        // Passing on a commander shouldn't train the preference model.
+        if (pickingCommander) skip(card);
+        else reject(card);
+      }
       history.current.push({ card, decision });
 
       const w = window.innerWidth || 400;
@@ -68,7 +82,7 @@ export function SwipeDeck() {
         busy.current = false;
       }, FLY_MS);
     },
-    [addToDeck, reject, feed],
+    [addToDeck, reject, skip, setCommander, pickingCommander, feed],
   );
 
   const undo = useCallback(() => {
@@ -167,7 +181,9 @@ export function SwipeDeck() {
       return (
         <div className="feed-message">
           <div className="feed-spinner" />
-          <p className="feed-message-sub">Finding recommendations…</p>
+          <p className="feed-message-sub">
+            {pickingCommander ? 'Finding commanders…' : 'Finding recommendations…'}
+          </p>
         </div>
       );
     }
@@ -175,9 +191,13 @@ export function SwipeDeck() {
     if (!top) {
       return (
         <div className="feed-message">
-          <p className="feed-message-title">That's everything</p>
+          <p className="feed-message-title">
+            {pickingCommander ? 'No commanders match' : "That's everything"}
+          </p>
           <p className="feed-message-sub">
-            No more matches. Swipe down to widen your filters.
+            {pickingCommander
+              ? 'Try different colors, or clear them to see every commander.'
+              : 'No more matches. Swipe down to widen your filters.'}
           </p>
           <button type="button" className="feed-retry" onClick={() => setConfigOpen(true)}>
             Open filters
@@ -207,6 +227,7 @@ export function SwipeDeck() {
           animate={animate}
           depth={0}
           interactive
+          addLabel={pickingCommander ? 'COMMANDER' : 'ADD'}
         />
       </>
     );
@@ -242,6 +263,22 @@ export function SwipeDeck() {
         </button>
       </header>
 
+      {/* Context banner: what the feed is currently doing */}
+      {pickingCommander ? (
+        <div className="feed-banner feed-banner-commander">
+          ⚜ Choose your commander
+        </div>
+      ) : commander ? (
+        <button
+          type="button"
+          className="feed-banner feed-banner-active"
+          onClick={() => { vibrate(10); clearCommander(); }}
+        >
+          <span className="feed-banner-label">⚜ {commander.name}</span>
+          <span className="feed-banner-change">change</span>
+        </button>
+      ) : null}
+
       <div
         className="card-stage"
         onPointerDown={onPointerDown}
@@ -252,7 +289,9 @@ export function SwipeDeck() {
         {renderStack()}
 
         {/* Edge hints */}
-        <div className="swipe-hint swipe-hint-top">▼ filters</div>
+        {!pickingCommander && !commander && (
+          <div className="swipe-hint swipe-hint-top">▼ filters</div>
+        )}
         <div className="swipe-hint swipe-hint-bottom">▲ deck</div>
       </div>
 
