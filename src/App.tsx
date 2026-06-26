@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Tracker } from './pages/Tracker';
 import { Settings } from './pages/Settings';
+import { SwipeDeck } from './pages/SwipeDeck';
 import { AuroraLayer } from './components/AuroraLayer';
 import { useStore, DEFAULT_BG, DEFAULT_BG_BRIGHTNESS } from './store';
 
@@ -75,6 +76,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Tracker />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/swipe" element={<SwipeDeck />} />
         </Routes>
       </div>
     </BrowserRouter>
