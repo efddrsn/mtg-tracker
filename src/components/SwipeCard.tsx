@@ -14,6 +14,8 @@ interface SwipeCardProps {
   depth: number;
   // Whether this card receives the live overlay tint.
   interactive: boolean;
+  // Label shown on the right-swipe badge (e.g. "ADD" or "COMMANDER").
+  addLabel?: string;
 }
 
 // Visual rotation follows horizontal drag, Tinder-style.
@@ -21,7 +23,15 @@ function rotation(dx: number): number {
   return Math.max(-18, Math.min(18, dx / 14));
 }
 
-export function SwipeCard({ card, dx, dy, animate, depth, interactive }: SwipeCardProps) {
+export function SwipeCard({
+  card,
+  dx,
+  dy,
+  animate,
+  depth,
+  interactive,
+  addLabel = 'ADD',
+}: SwipeCardProps) {
   const [flipped, setFlipped] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -66,8 +76,13 @@ export function SwipeCard({ card, dx, dy, animate, depth, interactive }: SwipeCa
         {!loaded && img && <div className="swipe-card-skeleton" />}
 
         {/* Decision overlays */}
-        <div className="swipe-badge swipe-badge-add" style={{ opacity: addOpacity }}>
-          ADD
+        <div
+          className={`swipe-badge swipe-badge-add ${
+            addLabel.length > 4 ? 'swipe-badge-wide' : ''
+          }`}
+          style={{ opacity: addOpacity }}
+        >
+          {addLabel}
         </div>
         <div className="swipe-badge swipe-badge-nope" style={{ opacity: nopeOpacity }}>
           NOPE

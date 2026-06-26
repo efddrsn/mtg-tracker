@@ -16,8 +16,17 @@ almost the entire screen; everything else stays out of the way.
 - **EDHREC-ranked recommendations** — most-played cards surface first, fetched
   live from the [Scryfall API](https://scryfall.com/docs/api) (`order:edhrec`,
   no API key required)
+- **Commander-first flow** — in Commander, you swipe through legal commanders
+  first; picking one **locks the deck to its color identity** and seeds the rest
+  of the feed toward its strategy
+- **Distinctive openers** — non-Commander formats start with famous *colored*
+  cards (rare/mythic), skipping generic colorless staples like Sol Ring
+- **Adaptive recommendations** — a lightweight, on-device preference model
+  learns from every yes/no (card types, mana value, keywords, themes, colors)
+  and re-ranks the upcoming cards in real time
 - **Undo**, tap-to-flip double-faced cards, and on-screen buttons as fallbacks
-- **Persistent** — your deck, rejections, and filters survive reloads
+- **Persistent** — your commander, deck, rejections, learned tastes, and filters
+  all survive reloads
 
 Reach it from the **♥ Deck Builder** button in Settings, or navigate to `/swipe`.
 
