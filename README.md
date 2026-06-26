@@ -1,8 +1,27 @@
 # MTG Tracker
 
-A mobile-first Magic: The Gathering game tracker for floating mana, storm count, turn phases, and custom counters.
+A mobile-first Magic: The Gathering toolkit: a game tracker for floating mana,
+storm count, turn phases, and custom counters — plus a swipe-based deck-building
+recommendation app.
 
-## Features
+## Swipe Deck Builder (`/swipe`)
+
+A Tinder-style card-discovery feed for building decks. The card image fills
+almost the entire screen; everything else stays out of the way.
+
+- **Swipe right** — add the card to your deck (yes pile)
+- **Swipe left** — reject it (won't be shown again)
+- **Swipe down** — open filters (format, colors, card types, theme keyword)
+- **Swipe up** — open your deck (with prices, copy-to-clipboard, remove)
+- **EDHREC-ranked recommendations** — most-played cards surface first, fetched
+  live from the [Scryfall API](https://scryfall.com/docs/api) (`order:edhrec`,
+  no API key required)
+- **Undo**, tap-to-flip double-faced cards, and on-screen buttons as fallbacks
+- **Persistent** — your deck, rejections, and filters survive reloads
+
+Reach it from the **♥ Deck Builder** button in Settings, or navigate to `/swipe`.
+
+## Game Tracker Features
 
 - **Mana Floating** — Track each color of mana in your pool with fast +/− buttons
 - **Storm Counter** — Quick increment for storm-count decks

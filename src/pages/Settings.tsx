@@ -42,6 +42,14 @@ export function Settings() {
           </svg>
         </button>
         <h1 className="text-base font-bold tracking-wide text-text-primary">Settings</h1>
+        <button
+          className="ml-auto px-3 py-2 rounded-xl text-xs font-bold tracking-wide
+                     text-white bg-accent hover:bg-accent-hover active:scale-95 transition-all"
+          onClick={() => { vibrate(10); navigate('/swipe'); }}
+          aria-label="Open deck builder"
+        >
+          ♥ Deck Builder
+        </button>
       </header>
 
       <div className="px-3 pt-4 pb-8 space-y-5">
