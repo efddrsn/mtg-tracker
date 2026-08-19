@@ -8,17 +8,11 @@ import {
   type DeckFormat,
   DEFAULT_CONFIG,
 } from './scryfall';
-import { applyToPrefs, type Prefs } from './recommender';
+import { applyToPrefs, DEFAULT_TUNING, type Prefs, type TuningParams } from './recommender';
 
 export interface SavedCard extends DeckCard {
   addedAt: number;
 }
-
-// Number of opening swipes that use the "distinctive" seed query before the
-// feed broadens to the full pool (non-commander formats only).
-export const SEED_LIMIT = 12;
-// How strongly the chosen commander biases the preference model.
-const COMMANDER_SEED_WEIGHT = 2;
 
 interface DeckState {
   config: DeckConfig;
@@ -29,6 +23,8 @@ interface DeckState {
   // Learned preference vector + counters that drive the adaptive feed.
   prefs: Prefs;
   swipeCount: number;
+  // Manually inspectable/tunable recommender knobs — see TuningPanel.
+  tuning: TuningParams;
   // Bumped when the feed must restart (config/commander change).
   configVersion: number;
   // Bumped when prefs change so the feed can re-rank without refetching.
@@ -57,6 +53,12 @@ interface DeckState {
   removeFromDeck: (oracleId: string) => void;
   clearDeck: () => void;
 
+  // Manual overrides for the tuning panel.
+  setTuningValue: (key: keyof TuningParams, value: number) => void;
+  resetTuning: () => void;
+  setPrefWeight: (key: string, value: number) => void;
+  resetPrefs: () => void;
+
   isSeen: (oracleId: string) => boolean;
 }
 
@@ -74,6 +76,7 @@ export const useDeckStore = create<DeckState>()(
         rejected: [],
         prefs: {},
         swipeCount: 0,
+        tuning: { ...DEFAULT_TUNING },
         configVersion: 0,
         prefsVersion: 0,
 
@@ -152,7 +155,7 @@ export const useDeckStore = create<DeckState>()(
               rejected: s.rejected.includes(card.oracleId)
                 ? s.rejected
                 : [card.oracleId, ...s.rejected].slice(0, REJECTED_CAP),
-              prefs: applyToPrefs(s.prefs, card, true, COMMANDER_SEED_WEIGHT),
+              prefs: applyToPrefs(s.prefs, card, true, s.tuning.commanderSeedWeight, s.tuning),
             };
           });
           set((s) => ({ configVersion: s.configVersion + 1, prefsVersion: s.prefsVersion + 1 }));
@@ -170,7 +173,7 @@ export const useDeckStore = create<DeckState>()(
             rejected: rejected.includes(card.oracleId)
               ? rejected
               : [card.oracleId, ...rejected].slice(0, REJECTED_CAP),
-            prefs: applyToPrefs(s.prefs, card, true),
+            prefs: applyToPrefs(s.prefs, card, true, 1, s.tuning),
             swipeCount: s.swipeCount + 1,
             prefsVersion: s.prefsVersion + 1,
           }));
@@ -180,7 +183,7 @@ export const useDeckStore = create<DeckState>()(
             rejected: s.rejected.includes(card.oracleId)
               ? s.rejected
               : [card.oracleId, ...s.rejected].slice(0, REJECTED_CAP),
-            prefs: applyToPrefs(s.prefs, card, false),
+            prefs: applyToPrefs(s.prefs, card, false, 1, s.tuning),
             swipeCount: s.swipeCount + 1,
             prefsVersion: s.prefsVersion + 1,
           }));
@@ -202,7 +205,7 @@ export const useDeckStore = create<DeckState>()(
               .map((c) => ({ ...c, addedAt: now }));
 
             let prefs = s.prefs;
-            for (const c of cards) prefs = applyToPrefs(prefs, c, true);
+            for (const c of cards) prefs = applyToPrefs(prefs, c, true, 1, s.tuning);
 
             const rejected = [
               ...new Set([...cards.map((c) => c.oracleId), ...s.rejected]),
@@ -243,6 +246,28 @@ export const useDeckStore = create<DeckState>()(
         },
         clearDeck: () => set({ deck: [], commander: null }),
 
+        setTuningValue: (key, value) => {
+          set((s) => ({ tuning: { ...s.tuning, [key]: value } }));
+          // tribalMin/tagTriggerMin/seedLimit change how existing prefs score
+          // and which phase the feed is in; re-rank (and let the feed hook's
+          // own memoized seed/phase recompute pick up any knock-on refetch).
+          set((s) => ({ prefsVersion: s.prefsVersion + 1 }));
+        },
+        resetTuning: () => {
+          set({ tuning: { ...DEFAULT_TUNING } });
+          set((s) => ({ prefsVersion: s.prefsVersion + 1 }));
+        },
+        setPrefWeight: (key, value) => {
+          set((s) => ({
+            prefs: { ...s.prefs, [key]: value },
+            prefsVersion: s.prefsVersion + 1,
+          }));
+        },
+        resetPrefs: () => {
+          set({ prefs: {} });
+          set((s) => ({ prefsVersion: s.prefsVersion + 1 }));
+        },
+
         isSeen: (oracleId) => {
           const { deck, rejected } = get();
           return rejected.includes(oracleId) || deck.some((c) => c.oracleId === oracleId);
@@ -251,7 +276,7 @@ export const useDeckStore = create<DeckState>()(
     },
     {
       name: 'mtg-swipe-deck',
-      version: 3,
+      version: 4,
       partialize: (s) => ({
         config: s.config,
         deck: s.deck,
@@ -259,6 +284,7 @@ export const useDeckStore = create<DeckState>()(
         rejected: s.rejected,
         prefs: s.prefs,
         swipeCount: s.swipeCount,
+        tuning: s.tuning,
       }),
       migrate: (persisted, version) => {
         let s = (persisted ?? {}) as Partial<DeckState>;
@@ -267,6 +293,9 @@ export const useDeckStore = create<DeckState>()(
         }
         if (version < 3) {
           s = { ...s, config: { ...DEFAULT_CONFIG, ...s.config } };
+        }
+        if (version < 4) {
+          s = { ...s, tuning: { ...DEFAULT_TUNING, ...s.tuning } };
         }
         return s as DeckState;
       },
