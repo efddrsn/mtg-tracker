@@ -33,6 +33,13 @@ almost the entire screen; everything else stays out of the way.
 - **Rarity filter** — narrow to common/uncommon/rare/mythic
 - **Adaptive recommendations** — a lightweight, on-device preference model
   learns from every yes/no and re-ranks the upcoming cards in real time
+- **Tuning panel** — a small tab peeking in from the right edge (drag it in,
+  or tap it) opens a live, fully editable view of the recommender: every
+  learned weight as a draggable diverging bar, grouped by category, plus the
+  algorithm's own dials (like/dislike strength, tribal threshold, tag
+  trigger, …). Drag any bar to correct the model on the spot, clear a single
+  signal, or reset everything back to defaults — see
+  [How the recommender works](#how-the-recommender-works) below
 - **Undo**, tap-to-flip double-faced cards, and on-screen buttons as fallbacks
 - **Persistent** — your commander, deck, rejections, learned tastes, and filters
   all survive reloads
@@ -65,6 +72,11 @@ Deliberately *not* considered: set, rarity, flavor, or art. Creature **type** is
 ignored too — unless the deck proves it's tribal (a subtype only starts
 mattering once several liked cards share it), so a lone creature you liked won't
 flood the feed with its kindred.
+
+Every constant above (like/dislike strength, the weight clamp, the tribal and
+tag-trigger thresholds, the commander bias, the opener length) — plus the
+learned weight of every individual trait — is inspectable and editable live in
+the **tuning panel**. Nothing about the algorithm is a black box.
 
 ## Game Tracker Features
 

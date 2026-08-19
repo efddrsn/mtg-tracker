@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useDeckStore, SEED_LIMIT } from './deckStore';
+import { useDeckStore } from './deckStore';
 import {
   fetchRecommendations,
   fetchNextPage,
@@ -10,12 +10,9 @@ import {
   type FeedPhase,
   type FeedRequest,
 } from './scryfall';
-import { hasSignal, scoreCard, type Prefs } from './recommender';
+import { hasSignal, scoreCard, type Prefs, type TuningParams } from './recommender';
 
 const LOW_WATER = 6; // refill when the pool drops to this size
-// Net "theme:<key>" weight (roughly two clear likes) required before we spend
-// an extra request pulling in precision oracle-tag matches for that theme.
-const TAG_TRIGGER_MIN = 1.5;
 
 // Cards carry a fetch-order sequence so re-ranking can fall back to EDHREC
 // popularity for ties (and so re-inserted "undo" cards sort to the front).
@@ -31,14 +28,19 @@ export interface FeedState {
 
 // Sort by learned preference (when there's any signal), EDHREC order otherwise.
 // `keepHead` pins the current top card so it never swaps out from under a drag.
-function rankPool(items: FeedItem[], prefs: Prefs, keepHead: boolean): FeedItem[] {
+function rankPool(
+  items: FeedItem[],
+  prefs: Prefs,
+  tuning: TuningParams,
+  keepHead: boolean,
+): FeedItem[] {
   if (!hasSignal(prefs)) {
     return [...items].sort((a, b) => a.seq - b.seq);
   }
   const head = keepHead ? items.slice(0, 1) : [];
   const rest = keepHead ? items.slice(1) : items;
   const scored = rest
-    .map((card) => ({ card, score: scoreCard(card, prefs) }))
+    .map((card) => ({ card, score: scoreCard(card, prefs, tuning) }))
     .sort((a, b) => b.score - a.score || a.card.seq - b.card.seq)
     .map((x) => x.card);
   return [...head, ...scored];
@@ -51,11 +53,12 @@ export function useRecommendationFeed() {
   const prefsVersion = useDeckStore((s) => s.prefsVersion);
   const swipeCount = useDeckStore((s) => s.swipeCount);
   const prefs = useDeckStore((s) => s.prefs);
+  const tuning = useDeckStore((s) => s.tuning);
   const isSeen = useDeckStore((s) => s.isSeen);
 
   const phase: FeedPhase =
     config.format === 'commander' && !commander ? 'commander-select' : 'build';
-  const seed = config.format !== 'commander' && swipeCount < SEED_LIMIT;
+  const seed = config.format !== 'commander' && swipeCount < tuning.seedLimit;
   // A change to either forces a refetch; everything else re-ranks in place.
   const feedKey = `${configVersion}:${phase}:${seed ? 'seed' : 'broad'}`;
 
@@ -76,6 +79,10 @@ export function useRecommendationFeed() {
   useEffect(() => {
     prefsRef.current = prefs;
   }, [prefs]);
+  const tuningRef = useRef(tuning);
+  useEffect(() => {
+    tuningRef.current = tuning;
+  }, [tuning]);
 
   const tag = useCallback((cards: DeckCard[], existing: FeedItem[]): FeedItem[] => {
     const existingIds = new Set(existing.map((c) => c.oracleId));
@@ -114,7 +121,7 @@ export function useRecommendationFeed() {
       .then((page) => {
         if (ctrl.signal.aborted) return;
         nextPageRef.current = page.nextPage;
-        const fresh = rankPool(tag(page.cards, []), prefsRef.current, false);
+        const fresh = rankPool(tag(page.cards, []), prefsRef.current, tuningRef.current, false);
         setState({
           queue: fresh,
           loading: false,
@@ -152,7 +159,7 @@ export function useRecommendationFeed() {
         nextPageRef.current = page.nextPage;
         setState((s) => {
           const merged = [...s.queue, ...tag(page.cards, s.queue)];
-          const queue = rankPool(merged, prefsRef.current, true);
+          const queue = rankPool(merged, prefsRef.current, tuningRef.current, true);
           return {
             ...s,
             queue,
@@ -195,7 +202,7 @@ export function useRecommendationFeed() {
   useEffect(() => {
     setState((s) => {
       if (s.queue.length < 2) return s;
-      return { ...s, queue: rankPool(s.queue, prefsRef.current, true) };
+      return { ...s, queue: rankPool(s.queue, prefsRef.current, tuningRef.current, true) };
     });
   }, [prefsVersion]);
 
@@ -209,7 +216,7 @@ export function useRecommendationFeed() {
     const due = ORACLE_TAG_MAP.filter(
       (t) =>
         !triedTagsRef.current.has(t.themeKey) &&
-        (p[`theme:${t.themeKey}`] ?? 0) >= TAG_TRIGGER_MIN,
+        (p[`theme:${t.themeKey}`] ?? 0) >= tuningRef.current.tagTriggerMin,
     );
     if (due.length === 0) return;
     for (const t of due) triedTagsRef.current.add(t.themeKey);
@@ -227,7 +234,7 @@ export function useRecommendationFeed() {
           const hinted = cards.map((c) => ({ ...c, tagHints: [t.themeKey] }));
           setState((s) => {
             const merged = [...s.queue, ...tag(hinted, s.queue)];
-            return { ...s, queue: rankPool(merged, prefsRef.current, true), exhausted: false };
+            return { ...s, queue: rankPool(merged, prefsRef.current, tuningRef.current, true), exhausted: false };
           });
         } catch {
           // Best-effort enrichment; a failed tag fetch just means fewer

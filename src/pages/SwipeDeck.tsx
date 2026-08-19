@@ -4,6 +4,7 @@ import { SwipeCard } from '../components/SwipeCard';
 import { ConfigSheet } from '../components/ConfigSheet';
 import { DeckSheet } from '../components/DeckSheet';
 import { CommanderSearch } from '../components/CommanderSearch';
+import { TuningPanel } from '../components/TuningPanel';
 import { useRecommendationFeed } from '../deck/useFeed';
 import { useDeckStore } from '../deck/deckStore';
 import type { DeckCard } from '../deck/scryfall';
@@ -41,6 +42,8 @@ export function SwipeDeck() {
   const [configDragY, setConfigDragY] = useState(0);
   const [deckDragY, setDeckDragY] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [tuneOpen, setTuneOpen] = useState(false);
+  const [tuneDragX, setTuneDragX] = useState(0);
   // Auto-offer the commander search once when entering the commander phase.
   const autoOffered = useRef(false);
 
@@ -64,7 +67,36 @@ export function SwipeDeck() {
   const top: DeckCard | undefined = feed.queue[0];
   const second: DeckCard | undefined = feed.queue[1];
 
-  const sheetOpen = configOpen || deckOpen;
+  const sheetOpen = configOpen || deckOpen || tuneOpen;
+
+  // --- Tuning-panel edge tab: a small, distinct gesture zone on the right
+  // edge, independent of the card-stage's own swipe handling. Drag it inward
+  // to open progressively, or just tap it.
+  const tuneTabStart = useRef({ x: 0, y: 0 });
+  const tuneTabDragging = useRef(false);
+
+  const onTuneTabDown = (e: React.PointerEvent) => {
+    tuneTabDragging.current = true;
+    tuneTabStart.current = { x: e.clientX, y: e.clientY };
+    try {
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } catch { /* ignore */ }
+  };
+  const onTuneTabMove = (e: React.PointerEvent) => {
+    if (!tuneTabDragging.current) return;
+    setTuneDragX(Math.min(0, e.clientX - tuneTabStart.current.x));
+  };
+  const onTuneTabUp = (e: React.PointerEvent) => {
+    if (!tuneTabDragging.current) return;
+    tuneTabDragging.current = false;
+    const dx = e.clientX - tuneTabStart.current.x;
+    const threshold = -(window.innerWidth || 400) * 0.18;
+    if (dx < threshold) {
+      vibrate(12);
+      setTuneOpen(true);
+    }
+    setTuneDragX(0);
+  };
 
   const commit = useCallback(
     (decision: Decision) => {
@@ -314,6 +346,28 @@ export function SwipeDeck() {
         )}
       </div>
 
+      {/* Tuning-panel edge tab — its own small gesture zone, distinct from the
+          card swipe area, so it never competes with left/right/up/down decisions. */}
+      {!tuneOpen && (
+        <button
+          type="button"
+          className="tune-tab"
+          onPointerDown={onTuneTabDown}
+          onPointerMove={onTuneTabMove}
+          onPointerUp={onTuneTabUp}
+          onPointerCancel={onTuneTabUp}
+          onClick={() => setTuneOpen(true)}
+          aria-label="Tune recommendations"
+          style={{
+            transform: `translateX(${tuneDragX}px)`,
+            transition:
+              tuneDragX === 0 ? 'transform 0.25s cubic-bezier(0.22,0.61,0.36,1)' : 'none',
+          }}
+        >
+          🎛
+        </button>
+      )}
+
       {/* Action buttons (fallback / accessibility) */}
       <footer className="swipe-actions">
         <button
@@ -346,6 +400,7 @@ export function SwipeDeck() {
 
       <ConfigSheet open={configOpen} dragY={configDragY} onClose={() => setConfigOpen(false)} />
       <DeckSheet open={deckOpen} dragY={deckDragY} onClose={() => setDeckOpen(false)} />
+      <TuningPanel open={tuneOpen} dragX={tuneDragX} onClose={() => setTuneOpen(false)} />
       {searchOpen && <CommanderSearch onClose={() => setSearchOpen(false)} />}
     </div>
   );
