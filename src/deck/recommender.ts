@@ -4,7 +4,10 @@
 // server, no model — just transparent feature weights persisted with the deck.
 //
 // Design philosophy — what the model is allowed to learn from:
-//   * Synergy   — oracle-text themes (tokens, sacrifice, ramp…) and keywords.
+//   * Synergy   — regex-detected oracle-text themes (tokens, sacrifice, ramp…),
+//     keywords, and curated Scryfall oracle tags (see ORACLE_TAG_MAP in
+//     scryfall.ts) — a community-verified functional index that catches cards
+//     the regex heuristics miss (e.g. a bounce spell tagged `removal`).
 //   * Efficiency — mana-value buckets, so a player who likes cheap cards keeps
 //     seeing cheap cards.
 //   * Role      — broad card types (creature / instant / …) and color.
@@ -78,6 +81,11 @@ export function cardFeatures(card: DeckCard): string[] {
   for (const c of card.colors) f.push(`color:${c}`);
   for (const k of card.keywords) f.push(`kw:${k.toLowerCase()}`);
   for (const th of card.themes) f.push(`theme:${th}`);
+  // Curated Scryfall oracle tags (see ORACLE_TAG_MAP) — a stronger, community-
+  // verified synergy signal than the regex themes above. Cards fetched via a
+  // tag supplement carry these; swiping on them keeps teaching the model even
+  // when their wording doesn't match any regex theme.
+  for (const t of card.tagHints ?? []) f.push(`tag:${t}`);
   // Subtypes are tracked here so a tribe can be *detected*, but they only count
   // toward a card's score once they cross TRIBAL_MIN (see scoreCard). Rarity /
   // set / flavor are intentionally never features.

@@ -12,15 +12,27 @@ export type DeckFormat =
   | 'pioneer'
   | 'modern'
   | 'legacy'
-  | 'pauper';
+  | 'pauper'
+  | 'alchemy'
+  | 'historic'
+  | 'explorer'
+  | 'timeless'
+  | 'standardbrawl'
+  | 'gladiator';
 
-export const FORMATS: { value: DeckFormat; label: string }[] = [
+export const FORMATS: { value: DeckFormat; label: string; arena?: boolean }[] = [
   { value: 'commander', label: 'Commander' },
   { value: 'standard', label: 'Standard' },
   { value: 'pioneer', label: 'Pioneer' },
   { value: 'modern', label: 'Modern' },
   { value: 'legacy', label: 'Legacy' },
   { value: 'pauper', label: 'Pauper' },
+  { value: 'alchemy', label: 'Alchemy', arena: true },
+  { value: 'historic', label: 'Historic', arena: true },
+  { value: 'explorer', label: 'Explorer', arena: true },
+  { value: 'timeless', label: 'Timeless', arena: true },
+  { value: 'standardbrawl', label: 'Brawl', arena: true },
+  { value: 'gladiator', label: 'Gladiator', arena: true },
 ];
 
 export type CardKind =
@@ -42,6 +54,15 @@ export const CARD_KINDS: { value: CardKind; label: string }[] = [
   { value: 'land', label: 'Lands' },
 ];
 
+export type Rarity = 'common' | 'uncommon' | 'rare' | 'mythic';
+
+export const RARITIES: { value: Rarity; label: string }[] = [
+  { value: 'common', label: 'Common' },
+  { value: 'uncommon', label: 'Uncommon' },
+  { value: 'rare', label: 'Rare' },
+  { value: 'mythic', label: 'Mythic' },
+];
+
 export interface DeckConfig {
   format: DeckFormat;
   // Selected colors. Empty = no color restriction.
@@ -55,6 +76,10 @@ export interface DeckConfig {
   theme: string;
   // Hide basic lands from the feed (they're rarely a recommendation).
   hideBasics: boolean;
+  // Restrict to cards available on MTG Arena (game:arena).
+  arenaOnly: boolean;
+  // Rarities to include (OR). Empty = all rarities.
+  rarities: Rarity[];
 }
 
 export const DEFAULT_CONFIG: DeckConfig = {
@@ -64,6 +89,8 @@ export const DEFAULT_CONFIG: DeckConfig = {
   kinds: [],
   theme: '',
   hideBasics: true,
+  arenaOnly: false,
+  rarities: [],
 };
 
 export interface DeckCard {
@@ -79,6 +106,9 @@ export interface DeckCard {
   keywords: string[];
   // Coarse strategy tags derived from oracle text (see THEME_PATTERNS).
   themes: string[];
+  // Curated Scryfall oracle-tag keys this card was fetched via (see
+  // ORACLE_TAG_MAP). Unset for cards that arrived through the normal feed.
+  tagHints?: string[];
   edhrecRank: number | null;
   image: string | null;
   backImage: string | null;
@@ -118,6 +148,30 @@ function extractThemes(text: string): string[] {
   return out;
 }
 
+// --- Oracle tags -------------------------------------------------------------
+// Scryfall's card objects don't expose their own community tags, but `otag:`
+// IS a valid search filter — a curated, human-verified functional index (see
+// https://scryfall.com/docs/api/tags). That makes it much more precise than
+// the regex guesses above (e.g. a bounce spell reads nothing like "destroy
+// target", but the community correctly tags it `removal`).
+//
+// We use tags as a *supplemental fetch*, not a per-card score: once the local
+// regex theme signal shows real interest in one of these themes, the feed
+// fires one extra `otag:` query (scoped to the deck's own filters) and merges
+// the results in, marking them with `tagHints` so they score just as well as
+// (and keep teaching the model alongside) anything matched by regex.
+export const ORACLE_TAG_MAP: { themeKey: string; otag: string; label: string }[] = [
+  { themeKey: 'ramp', otag: 'ramp', label: 'Ramp' },
+  { themeKey: 'removal', otag: 'removal', label: 'Removal' },
+  { themeKey: 'draw', otag: 'card-advantage', label: 'Card advantage' },
+  { themeKey: 'sacrifice', otag: 'sac-outlet', label: 'Sac outlets' },
+  { themeKey: 'lifegain', otag: 'lifegain', label: 'Lifegain' },
+  { themeKey: 'reanimate', otag: 'reanimate', label: 'Reanimation' },
+  { themeKey: 'countermagic', otag: 'counterspell', label: 'Counterspells' },
+  { themeKey: 'discard', otag: 'hand-disruption', label: 'Hand disruption' },
+  { themeKey: 'burn', otag: 'burn', label: 'Burn' },
+];
+
 // --- Query construction -----------------------------------------------------
 
 export type FeedPhase = 'commander-select' | 'build';
@@ -131,20 +185,15 @@ export interface FeedRequest {
   seed: boolean;
 }
 
-export function buildQuery(req: FeedRequest): string {
-  const { config, commanderIdentity, phase, seed } = req;
+// Clauses shared by the main feed query and the general "add a card" search:
+// format legality, color identity, Arena-only, and rarity. Kind/theme/seed are
+// feed-specific narrowing, not applicability, so they're kept out of here.
+function baseClauses(
+  config: DeckConfig,
+  commanderIdentity: ColorCode[] | null,
+): string[] {
   const parts: string[] = [`legal:${config.format}`];
 
-  if (phase === 'commander-select') {
-    parts.push('is:commander');
-    if (config.colors.length > 0) {
-      parts.push(`id<=${config.colors.join('').toLowerCase()}`);
-    }
-    parts.push('-t:background');
-    return parts.join(' ');
-  }
-
-  // Build phase.
   const colors = commanderIdentity ?? config.colors;
   if (colors.length > 0) {
     const c = colors.join('').toLowerCase();
@@ -152,10 +201,36 @@ export function buildQuery(req: FeedRequest): string {
     parts.push(rule === 'exact' ? `id=${c}` : `id<=${c}`);
   }
 
+  if (config.arenaOnly) parts.push('game:arena');
+
+  if (config.rarities.length > 0) {
+    parts.push(`(${config.rarities.map((r) => `rarity:${r}`).join(' OR ')})`);
+  }
+
+  return parts;
+}
+
+export function buildQuery(req: FeedRequest): string {
+  const { config, commanderIdentity, phase, seed } = req;
+
+  if (phase === 'commander-select') {
+    const parts: string[] = [`legal:${config.format}`, 'is:commander'];
+    if (config.colors.length > 0) {
+      parts.push(`id<=${config.colors.join('').toLowerCase()}`);
+    }
+    if (config.arenaOnly) parts.push('game:arena');
+    parts.push('-t:background');
+    return parts.join(' ');
+  }
+
+  // Build phase.
+  const parts = baseClauses(config, commanderIdentity);
+
   if (seed) {
     // Distinctive opener: iconic *colored* cards, skipping generic colorless
-    // staples (Sol Ring, signets, Command Tower…) and lands.
-    parts.push('(rarity:rare OR rarity:mythic)');
+    // staples (Sol Ring, signets, Command Tower…) and lands. If the player
+    // already chose specific rarities above, that choice wins instead.
+    if (config.rarities.length === 0) parts.push('(rarity:rare OR rarity:mythic)');
     parts.push('-c:c');
     parts.push('-t:land');
   }
@@ -172,6 +247,16 @@ export function buildQuery(req: FeedRequest): string {
   }
 
   return parts.join(' ');
+}
+
+// Query for the general "add a card by name" search: same applicability
+// clauses as the feed (format/colors/arena/rarity) plus the typed name term.
+export function buildNameSearchQuery(
+  config: DeckConfig,
+  commanderIdentity: ColorCode[] | null,
+  term: string,
+): string {
+  return [...baseClauses(config, commanderIdentity), term].join(' ');
 }
 
 // --- Fetching ----------------------------------------------------------------
@@ -316,16 +401,12 @@ export async function fetchNextPage(
   return toPage(await request(nextPage, signal));
 }
 
-// Search legal commanders by (partial) name — powers the "find my commander"
-// overlay so a player who already knows their commander can jump straight to it.
-export async function searchCommanders(
-  name: string,
-  signal?: AbortSignal,
-): Promise<DeckCard[]> {
-  const term = name.trim();
-  if (!term) return [];
+// Shared name-search primitive behind both the commander finder and the
+// general "add a card" field: run an arbitrary query and return normalized,
+// image-bearing results, most-played first.
+async function searchByQuery(query: string, signal?: AbortSignal): Promise<DeckCard[]> {
   const params = new URLSearchParams({
-    q: `is:commander ${term}`,
+    q: query,
     order: 'edhrec',
     dir: 'asc',
     unique: 'cards',
@@ -335,6 +416,45 @@ export async function searchCommanders(
     .filter((c) => c.image_uris || c.card_faces)
     .map(normalize)
     .slice(0, 12);
+}
+
+// Fetch cards carrying a specific curated oracle tag, scoped to the deck's own
+// applicability filters — the "supplemental fetch" side of tag-based
+// recommendations (see ORACLE_TAG_MAP above).
+export async function fetchByOracleTag(
+  config: DeckConfig,
+  commanderIdentity: ColorCode[] | null,
+  otag: string,
+  signal?: AbortSignal,
+): Promise<DeckCard[]> {
+  const query = [...baseClauses(config, commanderIdentity), `otag:${otag}`].join(' ');
+  const params = new URLSearchParams({ q: query, order: 'edhrec', dir: 'asc', unique: 'cards' });
+  const body = await request(`${SEARCH_URL}?${params.toString()}`, signal);
+  return (body.data ?? []).filter((c) => c.image_uris || c.card_faces).map(normalize);
+}
+
+// Search legal commanders by (partial) name — powers the "find my commander"
+// overlay so a player who already knows their commander can jump straight to it.
+export async function searchCommanders(
+  name: string,
+  signal?: AbortSignal,
+): Promise<DeckCard[]> {
+  const term = name.trim();
+  if (!term) return [];
+  return searchByQuery(`is:commander ${term}`, signal);
+}
+
+// Search any card by (partial) name, scoped to the deck's current
+// format/color/Arena/rarity filters — powers the general "add a card" field.
+export async function searchCards(
+  name: string,
+  config: DeckConfig,
+  commanderIdentity: ColorCode[] | null,
+  signal?: AbortSignal,
+): Promise<DeckCard[]> {
+  const term = name.trim();
+  if (!term) return [];
+  return searchByQuery(buildNameSearchQuery(config, commanderIdentity, term), signal);
 }
 
 // --- Decklist import --------------------------------------------------------

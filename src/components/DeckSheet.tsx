@@ -1,5 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useDeckStore } from '../deck/deckStore';
+import { AddCardSearch } from './AddCardSearch';
 
 interface DeckSheetProps {
   open: boolean;
@@ -16,6 +17,7 @@ export function DeckSheet({ open, dragY, onClose }: DeckSheetProps) {
   const deck = useDeckStore((s) => s.deck);
   const removeFromDeck = useDeckStore((s) => s.removeFromDeck);
   const clearDeck = useDeckStore((s) => s.clearDeck);
+  const [addOpen, setAddOpen] = useState(false);
 
   const totalPrice = useMemo(
     () =>
@@ -55,6 +57,9 @@ export function DeckSheet({ open, dragY, onClose }: DeckSheetProps) {
             {totalPrice > 0 && (
               <span className="deck-price">${totalPrice.toFixed(2)}</span>
             )}
+            <button type="button" className="sheet-text-btn" onClick={() => setAddOpen(true)}>
+              + Add
+            </button>
             {deck.length > 0 && (
               <>
                 <button type="button" className="sheet-text-btn" onClick={exportList}>
@@ -109,6 +114,7 @@ export function DeckSheet({ open, dragY, onClose }: DeckSheetProps) {
           )}
         </div>
       </div>
+      {addOpen && <AddCardSearch onClose={() => setAddOpen(false)} />}
     </>
   );
 }
