@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useDeckStore } from '../deck/deckStore';
 import {
   ALL_COLORS,
   CARD_KINDS,
   FORMATS,
+  RARITIES,
   fetchCardsByName,
   parseDecklist,
   type ColorCode,
@@ -32,12 +33,17 @@ export function ConfigSheet({ open, dragY, onClose }: ConfigSheetProps) {
   const toggleKind = useDeckStore((s) => s.toggleKind);
   const setTheme = useDeckStore((s) => s.setTheme);
   const setHideBasics = useDeckStore((s) => s.setHideBasics);
+  const setArenaOnly = useDeckStore((s) => s.setArenaOnly);
+  const toggleRarity = useDeckStore((s) => s.toggleRarity);
   const clearCommander = useDeckStore((s) => s.clearCommander);
   const importCards = useDeckStore((s) => s.importCards);
   const resetConfig = useDeckStore((s) => s.resetConfig);
 
   // Colors are dictated by the commander once one is chosen.
   const colorsLocked = !!commander;
+
+  const paperFormats = useMemo(() => FORMATS.filter((f) => !f.arena), []);
+  const arenaFormats = useMemo(() => FORMATS.filter((f) => f.arena), []);
 
   const [importText, setImportText] = useState('');
   const [importing, setImporting] = useState(false);
@@ -95,7 +101,7 @@ export function ConfigSheet({ open, dragY, onClose }: ConfigSheetProps) {
           <section className="cfg-section">
             <label className="cfg-label">Format</label>
             <div className="chip-row">
-              {FORMATS.map((f) => (
+              {paperFormats.map((f) => (
                 <button
                   key={f.value}
                   type="button"
@@ -106,6 +112,30 @@ export function ConfigSheet({ open, dragY, onClose }: ConfigSheetProps) {
                 </button>
               ))}
             </div>
+            <label className="cfg-sublabel">Arena</label>
+            <div className="chip-row">
+              {arenaFormats.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  className={`chip ${config.format === f.value ? 'chip-on' : ''}`}
+                  onClick={() => setFormat(f.value)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="cfg-section">
+            <label className="cfg-toggle">
+              <input
+                type="checkbox"
+                checked={config.arenaOnly}
+                onChange={(e) => setArenaOnly(e.target.checked)}
+              />
+              <span>Arena only (cards available on MTG Arena)</span>
+            </label>
           </section>
 
           {commander && (
@@ -179,6 +209,22 @@ export function ConfigSheet({ open, dragY, onClose }: ConfigSheetProps) {
                   onClick={() => toggleKind(k.value)}
                 >
                   {k.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="cfg-section">
+            <label className="cfg-label">Rarity</label>
+            <div className="chip-row">
+              {RARITIES.map((r) => (
+                <button
+                  key={r.value}
+                  type="button"
+                  className={`chip ${config.rarities.includes(r.value) ? 'chip-on' : ''}`}
+                  onClick={() => toggleRarity(r.value)}
+                >
+                  {r.label}
                 </button>
               ))}
             </div>

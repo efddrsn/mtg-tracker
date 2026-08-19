@@ -903,6 +903,16 @@ input, button, select, textarea {
   color: var(--color-text-dim);
   margin-bottom: 8px;
 }
+.cfg-sublabel {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-text-dim);
+  opacity: 0.7;
+  margin: 10px 0 8px;
+}
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
   padding: 8px 14px;

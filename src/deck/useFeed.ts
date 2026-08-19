@@ -3,6 +3,8 @@ import { useDeckStore, SEED_LIMIT } from './deckStore';
 import {
   fetchRecommendations,
   fetchNextPage,
+  fetchByOracleTag,
+  ORACLE_TAG_MAP,
   ScryfallError,
   type DeckCard,
   type FeedPhase,
@@ -11,6 +13,9 @@ import {
 import { hasSignal, scoreCard, type Prefs } from './recommender';
 
 const LOW_WATER = 6; // refill when the pool drops to this size
+// Net "theme:<key>" weight (roughly two clear likes) required before we spend
+// an extra request pulling in precision oracle-tag matches for that theme.
+const TAG_TRIGGER_MIN = 1.5;
 
 // Cards carry a fetch-order sequence so re-ranking can fall back to EDHREC
 // popularity for ties (and so re-inserted "undo" cards sort to the front).
@@ -66,6 +71,7 @@ export function useRecommendationFeed() {
   const fetchingRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const seqRef = useRef(0);
+  const triedTagsRef = useRef<Set<string>>(new Set());
   const prefsRef = useRef(prefs);
   useEffect(() => {
     prefsRef.current = prefs;
@@ -100,6 +106,7 @@ export function useRecommendationFeed() {
     fetchingRef.current = true;
     nextPageRef.current = null;
     seqRef.current = 0;
+    triedTagsRef.current = new Set();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setState({ queue: [], loading: true, error: null, exhausted: false, totalCards: 0 });
 
@@ -191,6 +198,46 @@ export function useRecommendationFeed() {
       return { ...s, queue: rankPool(s.queue, prefsRef.current, true) };
     });
   }, [prefsVersion]);
+
+  // Once a regex theme's learned weight shows real interest, spend one extra
+  // request per theme pulling in Scryfall's curated `otag:` matches — cards
+  // that function the same way but that the regex missed (different wording,
+  // an unusual mode, etc.). Runs at most once per theme per feed session.
+  useEffect(() => {
+    if (phase !== 'build') return;
+    const p = prefsRef.current;
+    const due = ORACLE_TAG_MAP.filter(
+      (t) =>
+        !triedTagsRef.current.has(t.themeKey) &&
+        (p[`theme:${t.themeKey}`] ?? 0) >= TAG_TRIGGER_MIN,
+    );
+    if (due.length === 0) return;
+    for (const t of due) triedTagsRef.current.add(t.themeKey);
+
+    const ctrl = new AbortController();
+    const { config } = useDeckStore.getState();
+    const commanderIdentity = useDeckStore.getState().commander?.colorIdentity ?? null;
+
+    (async () => {
+      for (const t of due) {
+        if (ctrl.signal.aborted) return;
+        try {
+          const cards = await fetchByOracleTag(config, commanderIdentity, t.otag, ctrl.signal);
+          if (ctrl.signal.aborted) return;
+          const hinted = cards.map((c) => ({ ...c, tagHints: [t.themeKey] }));
+          setState((s) => {
+            const merged = [...s.queue, ...tag(hinted, s.queue)];
+            return { ...s, queue: rankPool(merged, prefsRef.current, true), exhausted: false };
+          });
+        } catch {
+          // Best-effort enrichment; a failed tag fetch just means fewer
+          // supplemental matches, not a user-facing error.
+        }
+      }
+    })();
+
+    return () => ctrl.abort();
+  }, [prefsVersion, phase, tag]);
 
   // Top up the queue proactively when it gets short.
   useEffect(() => {

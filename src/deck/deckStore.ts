@@ -40,6 +40,8 @@ interface DeckState {
   toggleKind: (kind: CardKind) => void;
   setTheme: (theme: string) => void;
   setHideBasics: (hide: boolean) => void;
+  setArenaOnly: (arenaOnly: boolean) => void;
+  toggleRarity: (rarity: DeckConfig['rarities'][number]) => void;
   resetConfig: () => void;
 
   setCommander: (card: DeckCard) => void;
@@ -113,6 +115,20 @@ export const useDeckStore = create<DeckState>()(
         },
         setHideBasics: (hideBasics) => {
           set((s) => ({ config: { ...s.config, hideBasics } }));
+          bumpConfig();
+        },
+        setArenaOnly: (arenaOnly) => {
+          set((s) => ({ config: { ...s.config, arenaOnly } }));
+          bumpConfig();
+        },
+        toggleRarity: (rarity) => {
+          set((s) => {
+            const has = s.config.rarities.includes(rarity);
+            const rarities = has
+              ? s.config.rarities.filter((r) => r !== rarity)
+              : [...s.config.rarities, rarity];
+            return { config: { ...s.config, rarities } };
+          });
           bumpConfig();
         },
         resetConfig: () => {
@@ -235,7 +251,7 @@ export const useDeckStore = create<DeckState>()(
     },
     {
       name: 'mtg-swipe-deck',
-      version: 2,
+      version: 3,
       partialize: (s) => ({
         config: s.config,
         deck: s.deck,
@@ -245,15 +261,12 @@ export const useDeckStore = create<DeckState>()(
         swipeCount: s.swipeCount,
       }),
       migrate: (persisted, version) => {
-        const s = (persisted ?? {}) as Partial<DeckState>;
+        let s = (persisted ?? {}) as Partial<DeckState>;
         if (version < 2) {
-          return {
-            ...s,
-            commander: null,
-            prefs: {},
-            swipeCount: 0,
-            prefsVersion: 0,
-          } as DeckState;
+          s = { ...s, commander: null, prefs: {}, swipeCount: 0, prefsVersion: 0 };
+        }
+        if (version < 3) {
+          s = { ...s, config: { ...DEFAULT_CONFIG, ...s.config } };
         }
         return s as DeckState;
       },

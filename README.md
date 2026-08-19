@@ -11,7 +11,7 @@ almost the entire screen; everything else stays out of the way.
 
 - **Swipe right** — add the card to your deck (yes pile)
 - **Swipe left** — reject it (won't be shown again)
-- **Swipe down** — open filters (format, colors, card types, theme keyword)
+- **Swipe down** — open filters (format, colors, card types, rarity, theme)
 - **Swipe up** — open your deck (with prices, copy-to-clipboard, remove)
 - **EDHREC-ranked recommendations** — most-played cards surface first, fetched
   live from the [Scryfall API](https://scryfall.com/docs/api) (`order:edhrec`,
@@ -21,32 +21,50 @@ almost the entire screen; everything else stays out of the way.
   of the feed toward its strategy
 - **Commander name search** — already know your commander? An optional,
   dismissible overlay lets you search by name and jump straight to it
+- **Add a card by name** — the same search-and-pick overlay, available from the
+  deck sheet, to drop any specific card straight into your deck
 - **Decklist import** — paste a list you already own (Moxfield/Archidekt style);
   it seeds your deck, sets the color filter, and teaches the recommender
 - **Distinctive openers** — non-Commander formats start with famous *colored*
   cards (rare/mythic), skipping generic colorless staples like Sol Ring
+- **Arena filter** — restrict to cards available on MTG Arena (`game:arena`),
+  plus Arena-native formats (Alchemy, Historic, Explorer, Timeless, Brawl,
+  Gladiator) alongside the paper formats
+- **Rarity filter** — narrow to common/uncommon/rare/mythic
 - **Adaptive recommendations** — a lightweight, on-device preference model
   learns from every yes/no and re-ranks the upcoming cards in real time
+- **Undo**, tap-to-flip double-faced cards, and on-screen buttons as fallbacks
+- **Persistent** — your commander, deck, rejections, learned tastes, and filters
+  all survive reloads
+
+Reach it from the **♥ Deck Builder** button in Settings, or navigate to `/swipe`.
 
 ### How the recommender works
 
 The base order of the feed is **EDHREC popularity** (`order:edhrec`) — the
 playability/power signal. On top of that, a transparent on-device preference
 model (`src/deck/recommender.ts`) re-ranks the upcoming cards from your swipes.
-Each yes/no nudges feature weights describing a card's **synergy** (oracle-text
-themes like tokens/sacrifice/ramp, and keywords), **efficiency** (mana-value
-buckets), and **role** (broad card type, color). Among equally on-theme cards,
-EDHREC rank breaks the tie, so power still wins.
+Each yes/no nudges feature weights describing a card's **synergy**, **efficiency**
+(mana-value buckets), and **role** (broad card type, color). Among equally
+on-theme cards, EDHREC rank breaks the tie, so power still wins.
+
+Synergy comes from two sources:
+1. **Regex-detected oracle-text themes** (tokens, sacrifice, ramp, draw, …) —
+   cheap and immediate, computed from every card the moment it's fetched.
+2. **Curated Scryfall oracle tags** (`otag:`) — a community-verified functional
+   index (see [scryfall.com/docs/api/tags](https://scryfall.com/docs/api/tags))
+   that's far more precise than regex (e.g. a bounce spell reads nothing like
+   "destroy target", but the community correctly tags it `removal`). Since
+   Scryfall doesn't expose a card's own tags on the card object, tags are used
+   as a **supplemental fetch**: once your swipes show real interest in a theme
+   (roughly two clear likes), the feed spends one extra request pulling in that
+   theme's precise `otag:` matches — cards functionally on-theme that the regex
+   would've missed — scoped to your current format/color/Arena/rarity filters.
 
 Deliberately *not* considered: set, rarity, flavor, or art. Creature **type** is
 ignored too — unless the deck proves it's tribal (a subtype only starts
 mattering once several liked cards share it), so a lone creature you liked won't
 flood the feed with its kindred.
-- **Undo**, tap-to-flip double-faced cards, and on-screen buttons as fallbacks
-- **Persistent** — your commander, deck, rejections, learned tastes, and filters
-  all survive reloads
-
-Reach it from the **♥ Deck Builder** button in Settings, or navigate to `/swipe`.
 
 ## Game Tracker Features
 
