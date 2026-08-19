@@ -4,22 +4,24 @@
 // server, no model — just transparent feature weights persisted with the deck.
 //
 // Design philosophy — what the model is allowed to learn from:
-//   * Synergy   — regex-detected oracle-text themes (tokens, sacrifice, ramp…),
-//     keywords, and curated Scryfall oracle tags (see ORACLE_TAG_MAP in
-//     scryfall.ts) — a community-verified functional index that catches cards
-//     the regex heuristics miss (e.g. a bounce spell tagged `removal`).
-//   * Efficiency — mana-value buckets, so a player who likes cheap cards keeps
-//     seeing cheap cards.
-//   * Role      — broad card types (creature / instant / …) and color.
-//   * Power     — supplied by the BASE ordering: the pool arrives in EDHREC
-//     popularity order, which is the playability/power signal. The preference
-//     score reorders by synergy/efficiency; EDHREC rank breaks ties, so among
-//     equally on-theme cards the more powerful/played one wins.
+//   * Only high-confidence, meaningful signals make it in: curated Scryfall
+//     oracle tags, regex-detected oracle-text themes, ability keywords, and
+//     mana value. Each carries its own confidence multiplier (see
+//     FEATURE_CATEGORIES) reflecting how trustworthy a signal it is —
+//     oracle tags first (community-verified), then themes, then keywords,
+//     then mana value last (the weakest signal: plenty of great cards share
+//     any given cost, so it should nudge, not steer).
+//   * Power comes from the BASE ordering: the pool arrives in EDHREC
+//     popularity order. The preference score only reorders within that;
+//     EDHREC rank breaks ties, so among equally on-theme cards the more
+//     powerful/played one wins.
 //
-// Deliberately ignored: set, rarity, flavor, art — none of these speak to how
-// good or synergistic a card is. Creature *type* is also ignored UNLESS the
-// deck is demonstrably tribal (see TRIBAL_MIN): a lone Merfolk you liked
-// shouldn't flood the feed with Merfolk, but a Merfolk *theme* should.
+// Deliberately left out entirely: card type, color, creature subtype, set,
+// rarity, flavor, art. Type and color are already hard filters in the config
+// sheet, so re-learning them as soft preferences is redundant noise. Creature
+// subtype (tribal synergy) turned out to be too easily confused with "I liked
+// one card that happened to be a Merfolk" — cut rather than tuned, in favor of
+// keeping only signals that are actually informative on their own.
 
 import type { DeckCard } from './scryfall';
 
@@ -37,9 +39,6 @@ export interface TuningParams {
   dislikeWeight: number;
   // Cap so a long session can't let one feature dominate the score.
   weightClamp: number;
-  // A creature subtype only starts influencing recommendations once this many
-  // net likes share it — i.e. the deck has shown a genuine tribal lean.
-  tribalMin: number;
   // Net theme weight required before spending a request on a supplemental
   // Scryfall oracle-tag fetch for that theme (see useFeed.ts).
   tagTriggerMin: number;
@@ -54,7 +53,6 @@ export const DEFAULT_TUNING: TuningParams = {
   likeWeight: 1,
   dislikeWeight: 0.55,
   weightClamp: 8,
-  tribalMin: 3,
   tagTriggerMin: 1.5,
   commanderSeedWeight: 2,
   seedLimit: 12,
@@ -98,15 +96,6 @@ export const TUNING_FIELDS: {
     emoji: '🧲',
   },
   {
-    key: 'tribalMin',
-    label: 'Tribal threshold',
-    hint: 'Net likes before a creature type counts as a tribe',
-    min: 1,
-    max: 8,
-    step: 0.5,
-    emoji: '🐉',
-  },
-  {
     key: 'tagTriggerMin',
     label: 'Tag trigger',
     hint: 'Interest needed before pulling in oracle-tag matches',
@@ -135,6 +124,18 @@ export const TUNING_FIELDS: {
   },
 ];
 
+// The only feature namespaces the model tracks, in priority order (also the
+// tuning panel's category order). `confidence` scales how strongly a single
+// swipe moves that category's weights — the most trustworthy signal (a
+// community-verified oracle tag) moves the needle hardest; the weakest
+// (mana value, since plenty of good cards share any given cost) moves it least.
+const FEATURE_CATEGORIES: Record<string, { category: string; emoji: string; confidence: number }> = {
+  tag: { category: 'Oracle tag', emoji: '🏷️', confidence: 1.5 },
+  theme: { category: 'Theme', emoji: '🧵', confidence: 1 },
+  kw: { category: 'Keyword', emoji: '⚡', confidence: 0.7 },
+  mv: { category: 'Mana value', emoji: '💧', confidence: 0.4 },
+};
+
 function mvBucket(cmc: number): string {
   if (cmc <= 1) return 'mv:0-1';
   if (cmc === 2) return 'mv:2';
@@ -143,54 +144,25 @@ function mvBucket(cmc: number): string {
   return 'mv:6+';
 }
 
-// Primary card type (first word of the type line, ignoring "Legendary" etc.).
-function primaryTypes(typeLine: string): string[] {
-  const face = typeLine.split('//')[0];
-  const beforeDash = face.split('—')[0].toLowerCase();
-  const known = [
-    'creature',
-    'instant',
-    'sorcery',
-    'artifact',
-    'enchantment',
-    'planeswalker',
-    'land',
-    'battle',
-  ];
-  return known.filter((t) => beforeDash.includes(t));
-}
-
-// Creature subtypes / tribes (after the em dash), e.g. "Merfolk Wizard".
-function subtypes(typeLine: string): string[] {
-  const face = typeLine.split('//')[0];
-  const idx = face.indexOf('—');
-  if (idx === -1) return [];
-  return face
-    .slice(idx + 1)
-    .trim()
-    .split(/\s+/)
-    .map((s) => s.toLowerCase())
-    .filter(Boolean);
-}
-
-// The feature tokens that describe a card for matching purposes.
+// The feature tokens that describe a card for matching purposes — only the
+// four tracked namespaces above; see the design philosophy note up top for
+// why type/color/subtype are deliberately left out.
 export function cardFeatures(card: DeckCard): string[] {
   const f: string[] = [];
-  for (const t of primaryTypes(card.typeLine)) f.push(`type:${t}`);
   f.push(mvBucket(card.cmc));
-  for (const c of card.colors) f.push(`color:${c}`);
   for (const k of card.keywords) f.push(`kw:${k.toLowerCase()}`);
   for (const th of card.themes) f.push(`theme:${th}`);
-  // Curated Scryfall oracle tags (see ORACLE_TAG_MAP) — a stronger, community-
-  // verified synergy signal than the regex themes above. Cards fetched via a
-  // tag supplement carry these; swiping on them keeps teaching the model even
-  // when their wording doesn't match any regex theme.
+  // Curated Scryfall oracle tags (see ORACLE_TAG_MAP) — the strongest,
+  // community-verified synergy signal. Cards fetched via a tag supplement
+  // carry these; swiping on them keeps teaching the model even when their
+  // wording doesn't match any regex theme.
   for (const t of card.tagHints ?? []) f.push(`tag:${t}`);
-  // Subtypes are tracked here so a tribe can be *detected*, but they only count
-  // toward a card's score once they cross TRIBAL_MIN (see scoreCard). Rarity /
-  // set / flavor are intentionally never features.
-  for (const st of subtypes(card.typeLine)) f.push(`sub:${st}`);
   return f;
+}
+
+function featureConfidence(feat: string): number {
+  const prefix = feat.slice(0, feat.indexOf(':'));
+  return FEATURE_CATEGORIES[prefix]?.confidence ?? 1;
 }
 
 // Fold a card into the preference vector. `weight` lets callers seed more
@@ -202,9 +174,10 @@ export function applyToPrefs(
   weight = 1,
   tuning: TuningParams = DEFAULT_TUNING,
 ): Prefs {
-  const delta = (liked ? tuning.likeWeight : -tuning.dislikeWeight) * weight;
+  const base = (liked ? tuning.likeWeight : -tuning.dislikeWeight) * weight;
   const next: Prefs = { ...prefs };
   for (const feat of cardFeatures(card)) {
+    const delta = base * featureConfidence(feat);
     const v = (next[feat] ?? 0) + delta;
     next[feat] = Math.max(-tuning.weightClamp, Math.min(tuning.weightClamp, v));
   }
@@ -214,21 +187,11 @@ export function applyToPrefs(
 // How well a candidate matches current preferences. Normalised by feature count
 // so feature-dense cards aren't unfairly favoured. Returns 0 when prefs is empty
 // (no swipes yet), which preserves the base EDHREC ordering.
-export function scoreCard(
-  card: DeckCard,
-  prefs: Prefs,
-  tuning: TuningParams = DEFAULT_TUNING,
-): number {
+export function scoreCard(card: DeckCard, prefs: Prefs): number {
   const feats = cardFeatures(card);
   if (feats.length === 0) return 0;
   let sum = 0;
-  for (const feat of feats) {
-    const w = prefs[feat] ?? 0;
-    // Creature type is inert until the deck proves it's tribal: a subtype must
-    // have accumulated tribalMin+ likes before it can sway the score.
-    if (feat.startsWith('sub:') && w < tuning.tribalMin) continue;
-    sum += w;
-  }
+  for (const feat of feats) sum += prefs[feat] ?? 0;
   return sum / Math.sqrt(feats.length);
 }
 
@@ -238,24 +201,6 @@ export function hasSignal(prefs: Prefs): boolean {
 }
 
 // --- Presentation helpers for the tuning panel ------------------------------
-
-const FEATURE_CATEGORIES: Record<string, { category: string; emoji: string }> = {
-  type: { category: 'Card type', emoji: '🃏' },
-  mv: { category: 'Mana value', emoji: '💧' },
-  color: { category: 'Color', emoji: '🎨' },
-  kw: { category: 'Keyword', emoji: '⚡' },
-  theme: { category: 'Theme', emoji: '🧵' },
-  tag: { category: 'Oracle tag', emoji: '🏷️' },
-  sub: { category: 'Tribal type', emoji: '🐉' },
-};
-
-const COLOR_NAMES: Record<string, string> = {
-  W: 'White',
-  U: 'Blue',
-  B: 'Black',
-  R: 'Red',
-  G: 'Green',
-};
 
 function titleCase(s: string): string {
   return s.replace(/\b\w/g, (c) => c.toUpperCase());
@@ -268,27 +213,42 @@ export interface FeatureInfo {
   label: string;
 }
 
-// Turn a raw feature key (e.g. "theme:ramp", "mv:4-5", "color:U") into
+// Whether a stored prefs key is one of the four tracked namespaces. Older
+// saved decks may still carry now-retired signals (card type, color, tribal
+// subtype); this keeps them out of the tuning panel without needing a data
+// migration — they're inert (never matched against new cards) either way.
+function isTrackedFeature(key: string): boolean {
+  return key.slice(0, key.indexOf(':')) in FEATURE_CATEGORIES;
+}
+
+// Drop any prefs entries outside the tracked namespaces — used by the store's
+// migration to clean out now-retired signals (card type, color, tribal
+// subtype) from older saved decks.
+export function pruneUntrackedFeatures(prefs: Prefs): Prefs {
+  const next: Prefs = {};
+  for (const [key, value] of Object.entries(prefs)) {
+    if (isTrackedFeature(key)) next[key] = value;
+  }
+  return next;
+}
+
+// Turn a raw feature key (e.g. "theme:ramp", "mv:4-5", "tag:removal") into
 // something a human can read in the tuning panel.
 export function describeFeature(key: string): FeatureInfo {
   const sep = key.indexOf(':');
   const prefix = sep === -1 ? key : key.slice(0, sep);
   const value = sep === -1 ? '' : key.slice(sep + 1);
   const meta = FEATURE_CATEGORIES[prefix] ?? { category: prefix, emoji: '❔' };
-  const label =
-    prefix === 'color'
-      ? COLOR_NAMES[value] ?? value
-      : prefix === 'mv'
-        ? `MV ${value}`
-        : titleCase(value.replace(/-/g, ' '));
+  const label = prefix === 'mv' ? `MV ${value}` : titleCase(value.replace(/-/g, ' '));
   return { key, category: meta.category, emoji: meta.emoji, label };
 }
 
 export type WeightedFeature = FeatureInfo & { value: number };
 
 // Group every non-zero learned weight by category, ordered to match
-// FEATURE_CATEGORIES and sorted within each category by impact (|value|,
-// descending) — exactly the shape the tuning panel renders.
+// FEATURE_CATEGORIES (oracle tag → theme → keyword → mana value) and sorted
+// within each category by impact (|value|, descending) — exactly the shape
+// the tuning panel renders.
 export function groupLearnedFeatures(prefs: Prefs): {
   category: string;
   emoji: string;
@@ -296,7 +256,7 @@ export function groupLearnedFeatures(prefs: Prefs): {
 }[] {
   const byCategory = new Map<string, WeightedFeature[]>();
   for (const [key, value] of Object.entries(prefs)) {
-    if (value === 0) continue;
+    if (value === 0 || !isTrackedFeature(key)) continue;
     const info = describeFeature(key);
     const list = byCategory.get(info.category) ?? [];
     list.push({ ...info, value });
@@ -321,7 +281,7 @@ export function summarizePrefs(prefs: Prefs): {
   let learnedCount = 0;
   let topFeature: WeightedFeature | null = null;
   for (const [key, value] of Object.entries(prefs)) {
-    if (value === 0) continue;
+    if (value === 0 || !isTrackedFeature(key)) continue;
     learnedCount++;
     if (!topFeature || Math.abs(value) > Math.abs(topFeature.value)) {
       topFeature = { ...describeFeature(key), value };
