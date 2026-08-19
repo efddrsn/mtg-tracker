@@ -10,7 +10,7 @@ import {
   type FeedPhase,
   type FeedRequest,
 } from './scryfall';
-import { hasSignal, scoreCard, type Prefs, type TuningParams } from './recommender';
+import { hasSignal, scoreCard, type Prefs } from './recommender';
 
 const LOW_WATER = 6; // refill when the pool drops to this size
 
@@ -28,19 +28,14 @@ export interface FeedState {
 
 // Sort by learned preference (when there's any signal), EDHREC order otherwise.
 // `keepHead` pins the current top card so it never swaps out from under a drag.
-function rankPool(
-  items: FeedItem[],
-  prefs: Prefs,
-  tuning: TuningParams,
-  keepHead: boolean,
-): FeedItem[] {
+function rankPool(items: FeedItem[], prefs: Prefs, keepHead: boolean): FeedItem[] {
   if (!hasSignal(prefs)) {
     return [...items].sort((a, b) => a.seq - b.seq);
   }
   const head = keepHead ? items.slice(0, 1) : [];
   const rest = keepHead ? items.slice(1) : items;
   const scored = rest
-    .map((card) => ({ card, score: scoreCard(card, prefs, tuning) }))
+    .map((card) => ({ card, score: scoreCard(card, prefs) }))
     .sort((a, b) => b.score - a.score || a.card.seq - b.card.seq)
     .map((x) => x.card);
   return [...head, ...scored];
@@ -121,7 +116,7 @@ export function useRecommendationFeed() {
       .then((page) => {
         if (ctrl.signal.aborted) return;
         nextPageRef.current = page.nextPage;
-        const fresh = rankPool(tag(page.cards, []), prefsRef.current, tuningRef.current, false);
+        const fresh = rankPool(tag(page.cards, []), prefsRef.current, false);
         setState({
           queue: fresh,
           loading: false,
@@ -159,7 +154,7 @@ export function useRecommendationFeed() {
         nextPageRef.current = page.nextPage;
         setState((s) => {
           const merged = [...s.queue, ...tag(page.cards, s.queue)];
-          const queue = rankPool(merged, prefsRef.current, tuningRef.current, true);
+          const queue = rankPool(merged, prefsRef.current, true);
           return {
             ...s,
             queue,
@@ -202,7 +197,7 @@ export function useRecommendationFeed() {
   useEffect(() => {
     setState((s) => {
       if (s.queue.length < 2) return s;
-      return { ...s, queue: rankPool(s.queue, prefsRef.current, tuningRef.current, true) };
+      return { ...s, queue: rankPool(s.queue, prefsRef.current, true) };
     });
   }, [prefsVersion]);
 
@@ -234,7 +229,7 @@ export function useRecommendationFeed() {
           const hinted = cards.map((c) => ({ ...c, tagHints: [t.themeKey] }));
           setState((s) => {
             const merged = [...s.queue, ...tag(hinted, s.queue)];
-            return { ...s, queue: rankPool(merged, prefsRef.current, tuningRef.current, true), exhausted: false };
+            return { ...s, queue: rankPool(merged, prefsRef.current, true), exhausted: false };
           });
         } catch {
           // Best-effort enrichment; a failed tag fetch just means fewer

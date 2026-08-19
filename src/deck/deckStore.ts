@@ -8,10 +8,25 @@ import {
   type DeckFormat,
   DEFAULT_CONFIG,
 } from './scryfall';
-import { applyToPrefs, DEFAULT_TUNING, type Prefs, type TuningParams } from './recommender';
+import {
+  applyToPrefs,
+  pruneUntrackedFeatures,
+  DEFAULT_TUNING,
+  type Prefs,
+  type TuningParams,
+} from './recommender';
 
 export interface SavedCard extends DeckCard {
   addedAt: number;
+}
+
+function pick<T extends object>(obj: Partial<T> | undefined, keys: string[]): Partial<T> {
+  const out: Partial<T> = {};
+  if (!obj) return out;
+  for (const k of keys) {
+    if (k in obj) out[k as keyof T] = (obj as Record<string, unknown>)[k] as T[keyof T];
+  }
+  return out;
 }
 
 interface DeckState {
@@ -248,9 +263,9 @@ export const useDeckStore = create<DeckState>()(
 
         setTuningValue: (key, value) => {
           set((s) => ({ tuning: { ...s.tuning, [key]: value } }));
-          // tribalMin/tagTriggerMin/seedLimit change how existing prefs score
-          // and which phase the feed is in; re-rank (and let the feed hook's
-          // own memoized seed/phase recompute pick up any knock-on refetch).
+          // tagTriggerMin/seedLimit change which phase the feed is in and
+          // whether a tag supplement should fire; re-rank (and let the feed
+          // hook's own memoized seed/phase recompute pick up any refetch).
           set((s) => ({ prefsVersion: s.prefsVersion + 1 }));
         },
         resetTuning: () => {
@@ -276,7 +291,7 @@ export const useDeckStore = create<DeckState>()(
     },
     {
       name: 'mtg-swipe-deck',
-      version: 4,
+      version: 5,
       partialize: (s) => ({
         config: s.config,
         deck: s.deck,
@@ -296,6 +311,16 @@ export const useDeckStore = create<DeckState>()(
         }
         if (version < 4) {
           s = { ...s, tuning: { ...DEFAULT_TUNING, ...s.tuning } };
+        }
+        if (version < 5) {
+          // The model now tracks only oracle tags, themes, keywords, and mana
+          // value — drop now-retired signals (card type, color, tribal
+          // subtype) from both the learned weights and the tuning object.
+          s = {
+            ...s,
+            prefs: pruneUntrackedFeatures(s.prefs ?? {}),
+            tuning: { ...DEFAULT_TUNING, ...pick(s.tuning, Object.keys(DEFAULT_TUNING)) },
+          };
         }
         return s as DeckState;
       },
