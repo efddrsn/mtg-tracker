@@ -12,7 +12,10 @@ interface TuningPanelProps {
 export function TuningPanel({ open, dragX, onClose }: TuningPanelProps) {
   const swipeCount = useDeckStore((s) => s.swipeCount);
   const deckCount = useDeckStore((s) => s.deck.length);
-  const rejectedCount = useDeckStore((s) => s.rejected.length);
+  const passedCount = useDeckStore((s) => {
+    const selected = new Set(s.deck.map((card) => card.oracleId));
+    return s.rejected.filter((oracleId) => !selected.has(oracleId)).length;
+  });
 
   // Drag-to-close on the panel's own grabber — the mirror gesture to the edge
   // tab's drag-to-open, so the panel swipes in AND out.
@@ -57,7 +60,7 @@ export function TuningPanel({ open, dragX, onClose }: TuningPanelProps) {
           transition: dragging ? 'none' : 'transform 0.3s cubic-bezier(0.22,0.61,0.36,1)',
         }}
         role="dialog"
-        aria-label="Recommendation tuning"
+        aria-label="Recommendation details"
       >
         <div
           className="tune-grabber"
@@ -69,7 +72,7 @@ export function TuningPanel({ open, dragX, onClose }: TuningPanelProps) {
         />
         <div className="tune-body">
           <div className="sheet-header">
-            <h2>🎛 Tuning</h2>
+            <h2>🧠 Recommendations</h2>
             <button type="button" className="sheet-text-btn" onClick={onClose}>
               Close
             </button>
@@ -77,7 +80,7 @@ export function TuningPanel({ open, dragX, onClose }: TuningPanelProps) {
 
           <p className="tune-summary">
             {swipeCount} swipe{swipeCount === 1 ? '' : 's'} · {deckCount} selected ·{' '}
-            {rejectedCount} passed
+            {passedCount} passed
           </p>
 
           <section className="tune-section">
