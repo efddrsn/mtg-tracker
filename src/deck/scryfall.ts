@@ -114,6 +114,13 @@ export interface DeckCard {
   backImage: string | null;
   priceUsd: string | null;
   scryfallUri: string;
+  oracleText: string;
+  games: string[];
+  legalities: Record<string, string>;
+  // Present when the card came from Recommander. The score is the primary
+  // ordering signal; rank preserves the API order if scores tie.
+  recommendationScore?: number;
+  recommendationRank?: number;
 }
 
 // --- Theme extraction -------------------------------------------------------
@@ -292,6 +299,8 @@ interface ScryfallCard {
   card_faces?: ScryfallCardFace[];
   prices?: { usd?: string | null };
   scryfall_uri: string;
+  games?: string[];
+  legalities?: Record<string, string>;
 }
 
 interface ScryfallList {
@@ -334,6 +343,9 @@ function normalize(card: ScryfallCard): DeckCard {
     backImage: pickImage(back),
     priceUsd: card.prices?.usd ?? null,
     scryfallUri: card.scryfall_uri,
+    oracleText: oracle,
+    games: card.games ?? [],
+    legalities: card.legalities ?? {},
   };
 }
 
@@ -491,21 +503,43 @@ export interface ImportResult {
   notFound: string[];
 }
 
-// Resolve card names to full cards via Scryfall's collection endpoint
-// (batched at the 75-identifier limit).
-export async function fetchCardsByName(
-  names: string[],
+// Apply filters that Recommander itself does not know about. Commander
+// legality and color identity are handled by the recommendation model; these
+// are the player's optional UI constraints.
+export function matchesRecommendationFilters(card: DeckCard, config: DeckConfig): boolean {
+  if (config.hideBasics && /\bbasic land\b/i.test(card.typeLine)) return false;
+  if (config.arenaOnly && !card.games.includes('arena')) return false;
+  if (config.rarities.length > 0 && !config.rarities.includes(card.rarity as Rarity)) {
+    return false;
+  }
+  if (
+    config.kinds.length > 0 &&
+    !config.kinds.some((kind) => new RegExp(`\\b${kind}\\b`, 'i').test(card.typeLine))
+  ) {
+    return false;
+  }
+  const theme = config.theme.trim().toLowerCase();
+  if (
+    theme &&
+    !`${card.name} ${card.typeLine} ${card.oracleText}`.toLowerCase().includes(theme)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+async function fetchCollection(
+  identifiers: ({ name: string } | { oracle_id: string })[],
   signal?: AbortSignal,
 ): Promise<ImportResult> {
-  const unique = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
   const cards: DeckCard[] = [];
   const notFound: string[] = [];
-  for (let i = 0; i < unique.length; i += 75) {
-    const chunk = unique.slice(i, i + 75);
+  for (let i = 0; i < identifiers.length; i += 75) {
+    const chunk = identifiers.slice(i, i + 75);
     const res = await fetch(COLLECTION_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ identifiers: chunk.map((name) => ({ name })) }),
+      body: JSON.stringify({ identifiers: chunk }),
       signal,
     });
     const body = (await res.json()) as ScryfallCollection;
@@ -516,4 +550,22 @@ export async function fetchCardsByName(
     for (const nf of body.not_found ?? []) if (nf.name) notFound.push(nf.name);
   }
   return { cards, notFound };
+}
+
+export async function fetchCardsByOracleId(
+  oracleIds: string[],
+  signal?: AbortSignal,
+): Promise<DeckCard[]> {
+  const unique = [...new Set(oracleIds.filter(Boolean))];
+  return (await fetchCollection(unique.map((oracle_id) => ({ oracle_id })), signal)).cards;
+}
+
+// Resolve card names to full cards via Scryfall's collection endpoint
+// (batched at the 75-identifier limit).
+export async function fetchCardsByName(
+  names: string[],
+  signal?: AbortSignal,
+): Promise<ImportResult> {
+  const unique = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
+  return fetchCollection(unique.map((name) => ({ name })), signal);
 }

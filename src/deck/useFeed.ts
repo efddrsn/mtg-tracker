@@ -3,19 +3,22 @@ import { useDeckStore } from './deckStore';
 import {
   fetchRecommendations,
   fetchNextPage,
-  fetchByOracleTag,
-  ORACLE_TAG_MAP,
   ScryfallError,
   type DeckCard,
   type FeedPhase,
   type FeedRequest,
 } from './scryfall';
-import { hasSignal, scoreCard, type Prefs } from './recommender';
+import {
+  fetchRecommanderRecommendations,
+  RecommanderError,
+} from './recommanderApi';
 
 const LOW_WATER = 6; // refill when the pool drops to this size
+const SEED_LIMIT = 12;
+const RECOMMENDER_REFRESH_MS = 500;
 
-// Cards carry a fetch-order sequence so re-ranking can fall back to EDHREC
-// popularity for ties (and so re-inserted "undo" cards sort to the front).
+// Cards carry a fetch-order sequence so non-Recommander fallbacks retain
+// EDHREC order (and re-inserted "undo" cards sort to the front).
 type FeedItem = DeckCard & { seq: number };
 
 export interface FeedState {
@@ -26,34 +29,38 @@ export interface FeedState {
   totalCards: number;
 }
 
-// Sort by learned preference (when there's any signal), EDHREC order otherwise.
-// `keepHead` pins the current top card so it never swaps out from under a drag.
-function rankPool(items: FeedItem[], prefs: Prefs, keepHead: boolean): FeedItem[] {
-  if (!hasSignal(prefs)) {
-    return [...items].sort((a, b) => a.seq - b.seq);
-  }
+// Recommander's confidence-corrected score is the primary signal. Its cards
+// always precede the EDHREC fallback; `keepHead` prevents a network refresh
+// from swapping the card currently under the player's finger.
+export function rankPool(items: FeedItem[], keepHead: boolean): FeedItem[] {
   const head = keepHead ? items.slice(0, 1) : [];
   const rest = keepHead ? items.slice(1) : items;
-  const scored = rest
-    .map((card) => ({ card, score: scoreCard(card, prefs) }))
-    .sort((a, b) => b.score - a.score || a.card.seq - b.card.seq)
-    .map((x) => x.card);
-  return [...head, ...scored];
+  const ranked = [...rest].sort((a, b) => {
+    const aScore = a.recommendationScore;
+    const bScore = b.recommendationScore;
+    if (aScore != null && bScore != null) {
+      return bScore - aScore ||
+        (a.recommendationRank ?? Number.MAX_SAFE_INTEGER) -
+          (b.recommendationRank ?? Number.MAX_SAFE_INTEGER);
+    }
+    if (aScore != null) return -1;
+    if (bScore != null) return 1;
+    return a.seq - b.seq;
+  });
+  return [...head, ...ranked];
 }
 
 export function useRecommendationFeed() {
   const config = useDeckStore((s) => s.config);
   const commander = useDeckStore((s) => s.commander);
   const configVersion = useDeckStore((s) => s.configVersion);
-  const prefsVersion = useDeckStore((s) => s.prefsVersion);
   const swipeCount = useDeckStore((s) => s.swipeCount);
-  const prefs = useDeckStore((s) => s.prefs);
-  const tuning = useDeckStore((s) => s.tuning);
+  const deck = useDeckStore((s) => s.deck);
   const isSeen = useDeckStore((s) => s.isSeen);
 
   const phase: FeedPhase =
     config.format === 'commander' && !commander ? 'commander-select' : 'build';
-  const seed = config.format !== 'commander' && swipeCount < tuning.seedLimit;
+  const seed = config.format !== 'commander' && swipeCount < SEED_LIMIT;
   // A change to either forces a refetch; everything else re-ranks in place.
   const feedKey = `${configVersion}:${phase}:${seed ? 'seed' : 'broad'}`;
 
@@ -69,15 +76,14 @@ export function useRecommendationFeed() {
   const fetchingRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const seqRef = useRef(0);
-  const triedTagsRef = useRef<Set<string>>(new Set());
-  const prefsRef = useRef(prefs);
-  useEffect(() => {
-    prefsRef.current = prefs;
-  }, [prefs]);
-  const tuningRef = useRef(tuning);
-  useEffect(() => {
-    tuningRef.current = tuning;
-  }, [tuning]);
+  const recommanderPrimaryRef = useRef(false);
+  const fallbackStartedRef = useRef(false);
+  const lastDeckSignatureRef = useRef('');
+
+  const deckSignature = deck
+    .map((card) => card.oracleId)
+    .sort()
+    .join(',');
 
   const tag = useCallback((cards: DeckCard[], existing: FeedItem[]): FeedItem[] => {
     const existingIds = new Set(existing.map((c) => c.oracleId));
@@ -108,29 +114,61 @@ export function useRecommendationFeed() {
     fetchingRef.current = true;
     nextPageRef.current = null;
     seqRef.current = 0;
-    triedTagsRef.current = new Set();
+    fallbackStartedRef.current = false;
+    const snapshot = useDeckStore.getState();
+    const useRecommander =
+      phase === 'build' && snapshot.config.format === 'commander' && snapshot.commander != null;
+    recommanderPrimaryRef.current = useRecommander;
+    lastDeckSignatureRef.current = snapshot.deck
+      .map((card) => card.oracleId)
+      .sort()
+      .join(',');
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setState({ queue: [], loading: true, error: null, exhausted: false, totalCards: 0 });
 
-    fetchRecommendations(buildRequest(), ctrl.signal)
+    const initial = async () => {
+      if (useRecommander && snapshot.commander) {
+        try {
+          const cards = await fetchRecommanderRecommendations(
+            {
+              commander: snapshot.commander,
+              deck: snapshot.deck,
+              config: snapshot.config,
+            },
+            ctrl.signal,
+          );
+          return { cards, nextPage: null, totalCards: cards.length };
+        } catch (error) {
+          if (ctrl.signal.aborted) throw error;
+          // The model is primary, not a single point of failure. A Scryfall
+          // feed remains useful while the API is unavailable.
+          recommanderPrimaryRef.current = false;
+          fallbackStartedRef.current = true;
+        }
+      }
+      return fetchRecommendations(buildRequest(), ctrl.signal);
+    };
+
+    initial()
       .then((page) => {
         if (ctrl.signal.aborted) return;
         nextPageRef.current = page.nextPage;
-        const fresh = rankPool(tag(page.cards, []), prefsRef.current, false);
+        const fresh = rankPool(tag(page.cards, []), false);
         setState({
           queue: fresh,
           loading: false,
           error: null,
-          exhausted: !page.nextPage && fresh.length === 0,
+          exhausted:
+            !page.nextPage && !recommanderPrimaryRef.current && fresh.length === 0,
           totalCards: page.totalCards,
         });
       })
       .catch((err: unknown) => {
         if (ctrl.signal.aborted) return;
         const msg =
-          err instanceof ScryfallError
+          err instanceof ScryfallError || err instanceof RecommanderError
             ? err.message
-            : 'Could not reach Scryfall. Check your connection.';
+            : 'Could not load recommendations. Check your connection.';
         setState((s) => ({ ...s, loading: false, error: msg }));
       })
       .finally(() => {
@@ -143,18 +181,26 @@ export function useRecommendationFeed() {
 
   // Load the next page and append any unseen cards (re-ranked into the tail).
   const loadMore = useCallback(() => {
-    if (fetchingRef.current || !nextPageRef.current) return;
+    const startFallback =
+      recommanderPrimaryRef.current &&
+      !fallbackStartedRef.current &&
+      !nextPageRef.current;
+    if (fetchingRef.current || (!nextPageRef.current && !startFallback)) return;
     fetchingRef.current = true;
     const ctrl = abortRef.current ?? new AbortController();
+    const pageRequest = startFallback
+      ? fetchRecommendations(buildRequest(), ctrl.signal)
+      : fetchNextPage(nextPageRef.current!, ctrl.signal);
+    if (startFallback) fallbackStartedRef.current = true;
     setState((s) => ({ ...s, loading: true }));
 
-    fetchNextPage(nextPageRef.current, ctrl.signal)
+    pageRequest
       .then((page) => {
         if (ctrl.signal.aborted) return;
         nextPageRef.current = page.nextPage;
         setState((s) => {
           const merged = [...s.queue, ...tag(page.cards, s.queue)];
-          const queue = rankPool(merged, prefsRef.current, true);
+          const queue = rankPool(merged, true);
           return {
             ...s,
             queue,
@@ -170,13 +216,19 @@ export function useRecommendationFeed() {
       .finally(() => {
         fetchingRef.current = false;
       });
-  }, [tag]);
+  }, [buildRequest, tag]);
 
   // Remove the top card after a decision; refill when running low.
   const advance = useCallback(() => {
     setState((s) => {
       const queue = s.queue.slice(1);
-      return { ...s, queue, exhausted: queue.length === 0 && !nextPageRef.current };
+      const canFallback =
+        recommanderPrimaryRef.current && !fallbackStartedRef.current;
+      return {
+        ...s,
+        queue,
+        exhausted: queue.length === 0 && !nextPageRef.current && !canFallback,
+      };
     });
   }, []);
 
@@ -192,58 +244,70 @@ export function useRecommendationFeed() {
     }));
   }, []);
 
-  // Re-rank the upcoming cards whenever preferences change (no refetch). The
-  // current top card stays put so an in-progress swipe isn't disrupted.
+  // Every added card changes the API input. Refresh after the swipe animation,
+  // pinning the new head so a network response never interrupts interaction.
+  // Left swipes do not call the API: the contract has no negative field and
+  // `tag` already filters their exact oracle ids.
   useEffect(() => {
-    setState((s) => {
-      if (s.queue.length < 2) return s;
-      return { ...s, queue: rankPool(s.queue, prefsRef.current, true) };
-    });
-  }, [prefsVersion]);
-
-  // Once a regex theme's learned weight shows real interest, spend one extra
-  // request per theme pulling in Scryfall's curated `otag:` matches — cards
-  // that function the same way but that the regex missed (different wording,
-  // an unusual mode, etc.). Runs at most once per theme per feed session.
-  useEffect(() => {
-    if (phase !== 'build') return;
-    const p = prefsRef.current;
-    const due = ORACLE_TAG_MAP.filter(
-      (t) =>
-        !triedTagsRef.current.has(t.themeKey) &&
-        (p[`theme:${t.themeKey}`] ?? 0) >= tuningRef.current.tagTriggerMin,
-    );
-    if (due.length === 0) return;
-    for (const t of due) triedTagsRef.current.add(t.themeKey);
-
+    if (
+      phase !== 'build' ||
+      config.format !== 'commander' ||
+      !commander ||
+      !recommanderPrimaryRef.current ||
+      deckSignature === lastDeckSignatureRef.current
+    ) {
+      return;
+    }
     const ctrl = new AbortController();
-    const { config } = useDeckStore.getState();
-    const commanderIdentity = useDeckStore.getState().commander?.colorIdentity ?? null;
-
-    (async () => {
-      for (const t of due) {
-        if (ctrl.signal.aborted) return;
-        try {
-          const cards = await fetchByOracleTag(config, commanderIdentity, t.otag, ctrl.signal);
-          if (ctrl.signal.aborted) return;
-          const hinted = cards.map((c) => ({ ...c, tagHints: [t.themeKey] }));
-          setState((s) => {
-            const merged = [...s.queue, ...tag(hinted, s.queue)];
-            return { ...s, queue: rankPool(merged, prefsRef.current, true), exhausted: false };
-          });
-        } catch {
-          // Best-effort enrichment; a failed tag fetch just means fewer
-          // supplemental matches, not a user-facing error.
-        }
+    const timer = window.setTimeout(async () => {
+      const snapshot = useDeckStore.getState();
+      if (!snapshot.commander) return;
+      lastDeckSignatureRef.current = snapshot.deck
+        .map((card) => card.oracleId)
+        .sort()
+        .join(',');
+      try {
+        const cards = await fetchRecommanderRecommendations(
+          {
+            commander: snapshot.commander,
+            deck: snapshot.deck,
+            config: snapshot.config,
+          },
+          ctrl.signal,
+        );
+        if (ctrl.signal.aborted || cards.length === 0) return;
+        setState((s) => {
+          const head = s.queue.slice(0, 1);
+          const fresh = tag(cards, head);
+          return {
+            ...s,
+            queue: rankPool([...head, ...fresh], head.length > 0),
+            totalCards: cards.length,
+            exhausted: false,
+            error: null,
+          };
+        });
+      } catch {
+        // Keep the current ranked queue. The low-water Scryfall fallback still
+        // guarantees that a transient model failure cannot strand the player.
       }
-    })();
+    }, RECOMMENDER_REFRESH_MS);
 
-    return () => ctrl.abort();
-  }, [prefsVersion, phase, tag]);
+    return () => {
+      window.clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [commander, config.format, deckSignature, phase, tag]);
 
   // Top up the queue proactively when it gets short.
   useEffect(() => {
-    if (state.queue.length <= LOW_WATER && nextPageRef.current && !fetchingRef.current) {
+    const canStartFallback =
+      recommanderPrimaryRef.current && !fallbackStartedRef.current;
+    if (
+      state.queue.length <= LOW_WATER &&
+      (nextPageRef.current || canStartFallback) &&
+      !fetchingRef.current
+    ) {
       loadMore();
     }
   }, [state.queue.length, loadMore]);
