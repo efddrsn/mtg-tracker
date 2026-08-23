@@ -8,42 +8,21 @@ import {
   type DeckFormat,
   DEFAULT_CONFIG,
 } from './scryfall';
-import {
-  applyToPrefs,
-  pruneUntrackedFeatures,
-  DEFAULT_TUNING,
-  type Prefs,
-  type TuningParams,
-} from './recommender';
 
 export interface SavedCard extends DeckCard {
   addedAt: number;
 }
 
-function pick<T extends object>(obj: Partial<T> | undefined, keys: string[]): Partial<T> {
-  const out: Partial<T> = {};
-  if (!obj) return out;
-  for (const k of keys) {
-    if (k in obj) out[k as keyof T] = (obj as Record<string, unknown>)[k] as T[keyof T];
-  }
-  return out;
-}
-
-interface DeckState {
+export interface DeckState {
   config: DeckConfig;
   deck: SavedCard[];
   commander: SavedCard | null;
   // Oracle ids of rejected / already-saved cards so we never re-surface them.
   rejected: string[];
-  // Learned preference vector + counters that drive the adaptive feed.
-  prefs: Prefs;
+  // Counter used for player feedback and the non-Commander opener.
   swipeCount: number;
-  // Manually inspectable/tunable recommender knobs — see TuningPanel.
-  tuning: TuningParams;
   // Bumped when the feed must restart (config/commander change).
   configVersion: number;
-  // Bumped when prefs change so the feed can re-rank without refetching.
-  prefsVersion: number;
 
   setFormat: (format: DeckFormat) => void;
   toggleColor: (color: ColorCode) => void;
@@ -60,19 +39,13 @@ interface DeckState {
 
   addToDeck: (card: DeckCard) => void;
   reject: (card: DeckCard) => void;
-  // Pass on a card without training the preference model (used for commanders).
+  // Pass on a commander without adding it to the recommendation input.
   skip: (card: DeckCard) => void;
-  // Import a pasted decklist: adds to deck, seeds the preference model, and
-  // (when no commander is set) sets the color filter from the cards' identities.
+  // Import a pasted decklist: adds it to the recommendation input and (when no
+  // commander is set) sets the color filter from the cards' identities.
   importCards: (cards: DeckCard[]) => void;
   removeFromDeck: (oracleId: string) => void;
   clearDeck: () => void;
-
-  // Manual overrides for the tuning panel.
-  setTuningValue: (key: keyof TuningParams, value: number) => void;
-  resetTuning: () => void;
-  setPrefWeight: (key: string, value: number) => void;
-  resetPrefs: () => void;
 
   isSeen: (oracleId: string) => boolean;
 }
@@ -89,11 +62,8 @@ export const useDeckStore = create<DeckState>()(
         deck: [],
         commander: null,
         rejected: [],
-        prefs: {},
         swipeCount: 0,
-        tuning: { ...DEFAULT_TUNING },
         configVersion: 0,
-        prefsVersion: 0,
 
         setFormat: (format) => {
           // Switching format invalidates a previously chosen commander.
@@ -154,9 +124,8 @@ export const useDeckStore = create<DeckState>()(
           bumpConfig();
         },
 
-        // Choosing a commander locks the deck's color identity to it, adds it to
-        // the deck, and seeds the preference model toward its strategy so the
-        // very next recommendations already lean the right way.
+        // Choosing a commander locks the deck's color identity to it and adds
+        // it to the explicit Recommander query context.
         setCommander: (card) => {
           set((s) => {
             const saved: SavedCard = { ...card, addedAt: Date.now() };
@@ -170,10 +139,9 @@ export const useDeckStore = create<DeckState>()(
               rejected: s.rejected.includes(card.oracleId)
                 ? s.rejected
                 : [card.oracleId, ...s.rejected].slice(0, REJECTED_CAP),
-              prefs: applyToPrefs(s.prefs, card, true, s.tuning.commanderSeedWeight, s.tuning),
             };
           });
-          set((s) => ({ configVersion: s.configVersion + 1, prefsVersion: s.prefsVersion + 1 }));
+          set((s) => ({ configVersion: s.configVersion + 1 }));
         },
         clearCommander: () => {
           set({ commander: null });
@@ -188,9 +156,7 @@ export const useDeckStore = create<DeckState>()(
             rejected: rejected.includes(card.oracleId)
               ? rejected
               : [card.oracleId, ...rejected].slice(0, REJECTED_CAP),
-            prefs: applyToPrefs(s.prefs, card, true, 1, s.tuning),
             swipeCount: s.swipeCount + 1,
-            prefsVersion: s.prefsVersion + 1,
           }));
         },
         reject: (card) => {
@@ -198,9 +164,7 @@ export const useDeckStore = create<DeckState>()(
             rejected: s.rejected.includes(card.oracleId)
               ? s.rejected
               : [card.oracleId, ...s.rejected].slice(0, REJECTED_CAP),
-            prefs: applyToPrefs(s.prefs, card, false, 1, s.tuning),
             swipeCount: s.swipeCount + 1,
-            prefsVersion: s.prefsVersion + 1,
           }));
         },
         skip: (card) => {
@@ -219,9 +183,6 @@ export const useDeckStore = create<DeckState>()(
               .filter((c) => !existing.has(c.oracleId))
               .map((c) => ({ ...c, addedAt: now }));
 
-            let prefs = s.prefs;
-            for (const c of cards) prefs = applyToPrefs(prefs, c, true, 1, s.tuning);
-
             const rejected = [
               ...new Set([...cards.map((c) => c.oracleId), ...s.rejected]),
             ].slice(0, REJECTED_CAP);
@@ -237,7 +198,6 @@ export const useDeckStore = create<DeckState>()(
 
             return {
               deck: [...added, ...s.deck],
-              prefs,
               rejected,
               config: { ...s.config, colors },
               swipeCount: s.swipeCount + cards.length,
@@ -245,7 +205,6 @@ export const useDeckStore = create<DeckState>()(
           });
           set((s) => ({
             configVersion: s.configVersion + 1,
-            prefsVersion: s.prefsVersion + 1,
           }));
         },
         removeFromDeck: (oracleId) => {
@@ -261,28 +220,6 @@ export const useDeckStore = create<DeckState>()(
         },
         clearDeck: () => set({ deck: [], commander: null }),
 
-        setTuningValue: (key, value) => {
-          set((s) => ({ tuning: { ...s.tuning, [key]: value } }));
-          // tagTriggerMin/seedLimit change which phase the feed is in and
-          // whether a tag supplement should fire; re-rank (and let the feed
-          // hook's own memoized seed/phase recompute pick up any refetch).
-          set((s) => ({ prefsVersion: s.prefsVersion + 1 }));
-        },
-        resetTuning: () => {
-          set({ tuning: { ...DEFAULT_TUNING } });
-          set((s) => ({ prefsVersion: s.prefsVersion + 1 }));
-        },
-        setPrefWeight: (key, value) => {
-          set((s) => ({
-            prefs: { ...s.prefs, [key]: value },
-            prefsVersion: s.prefsVersion + 1,
-          }));
-        },
-        resetPrefs: () => {
-          set({ prefs: {} });
-          set((s) => ({ prefsVersion: s.prefsVersion + 1 }));
-        },
-
         isSeen: (oracleId) => {
           const { deck, rejected } = get();
           return rejected.includes(oracleId) || deck.some((c) => c.oracleId === oracleId);
@@ -291,36 +228,21 @@ export const useDeckStore = create<DeckState>()(
     },
     {
       name: 'mtg-swipe-deck',
-      version: 5,
+      version: 6,
       partialize: (s) => ({
         config: s.config,
         deck: s.deck,
         commander: s.commander,
         rejected: s.rejected,
-        prefs: s.prefs,
         swipeCount: s.swipeCount,
-        tuning: s.tuning,
       }),
       migrate: (persisted, version) => {
         let s = (persisted ?? {}) as Partial<DeckState>;
         if (version < 2) {
-          s = { ...s, commander: null, prefs: {}, swipeCount: 0, prefsVersion: 0 };
+          s = { ...s, commander: null, swipeCount: 0 };
         }
         if (version < 3) {
           s = { ...s, config: { ...DEFAULT_CONFIG, ...s.config } };
-        }
-        if (version < 4) {
-          s = { ...s, tuning: { ...DEFAULT_TUNING, ...s.tuning } };
-        }
-        if (version < 5) {
-          // The model now tracks only oracle tags, themes, keywords, and mana
-          // value — drop now-retired signals (card type, color, tribal
-          // subtype) from both the learned weights and the tuning object.
-          s = {
-            ...s,
-            prefs: pruneUntrackedFeatures(s.prefs ?? {}),
-            tuning: { ...DEFAULT_TUNING, ...pick(s.tuning, Object.keys(DEFAULT_TUNING)) },
-          };
         }
         return s as DeckState;
       },
