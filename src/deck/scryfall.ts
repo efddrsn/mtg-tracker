@@ -123,6 +123,10 @@ export interface DeckCard {
   recommendationRank?: number;
 }
 
+export function isBasicLand(card: Pick<DeckCard, 'typeLine'>): boolean {
+  return /\bbasic land\b/i.test(card.typeLine);
+}
+
 // --- Theme extraction -------------------------------------------------------
 // Lightweight oracle-text classification so the recommender can learn that a
 // player favours, say, tokens or sacrifice without a server-side model.
@@ -199,7 +203,10 @@ function baseClauses(
   config: DeckConfig,
   commanderIdentity: ColorCode[] | null,
 ): string[] {
-  const parts: string[] = [`legal:${config.format}`];
+  // Keep the rollup on a physical non-foil printing. Combined with
+  // `unique=cards` below, this returns one gameplay object instead of the
+  // foil/showcase print variants that otherwise look like repeated cards.
+  const parts: string[] = [`legal:${config.format}`, 'is:nonfoil'];
 
   const colors = commanderIdentity ?? config.colors;
   if (colors.length > 0) {
@@ -221,7 +228,7 @@ export function buildQuery(req: FeedRequest): string {
   const { config, commanderIdentity, phase, seed } = req;
 
   if (phase === 'commander-select') {
-    const parts: string[] = [`legal:${config.format}`, 'is:commander'];
+    const parts: string[] = [`legal:${config.format}`, 'is:commander', 'is:nonfoil'];
     if (config.colors.length > 0) {
       parts.push(`id<=${config.colors.join('').toLowerCase()}`);
     }
@@ -453,7 +460,7 @@ export async function searchCommanders(
 ): Promise<DeckCard[]> {
   const term = name.trim();
   if (!term) return [];
-  return searchByQuery(`is:commander ${term}`, signal);
+  return searchByQuery(`is:commander is:nonfoil ${term}`, signal);
 }
 
 // Search any card by (partial) name, scoped to the deck's current
@@ -507,7 +514,7 @@ export interface ImportResult {
 // legality and color identity are handled by the recommendation model; these
 // are the player's optional UI constraints.
 export function matchesRecommendationFilters(card: DeckCard, config: DeckConfig): boolean {
-  if (config.hideBasics && /\bbasic land\b/i.test(card.typeLine)) return false;
+  if (config.hideBasics && isBasicLand(card)) return false;
   if (config.arenaOnly && !card.games.includes('arena')) return false;
   if (config.rarities.length > 0 && !config.rarities.includes(card.rarity as Rarity)) {
     return false;

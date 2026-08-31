@@ -3,6 +3,7 @@ import { useDeckStore } from './deckStore';
 import {
   fetchRecommendations,
   fetchNextPage,
+  isBasicLand,
   ScryfallError,
   type DeckCard,
   type FeedPhase,
@@ -36,6 +37,9 @@ export function rankPool(items: FeedItem[], keepHead: boolean): FeedItem[] {
   const head = keepHead ? items.slice(0, 1) : [];
   const rest = keepHead ? items.slice(1) : items;
   const ranked = [...rest].sort((a, b) => {
+    const basicOrder = Number(isBasicLand(a)) - Number(isBasicLand(b));
+    if (basicOrder !== 0) return basicOrder;
+
     const aScore = a.recommendationScore;
     const bScore = b.recommendationScore;
     if (aScore != null && bScore != null) {
@@ -56,7 +60,6 @@ export function useRecommendationFeed() {
   const configVersion = useDeckStore((s) => s.configVersion);
   const swipeCount = useDeckStore((s) => s.swipeCount);
   const deck = useDeckStore((s) => s.deck);
-  const isSeen = useDeckStore((s) => s.isSeen);
 
   const phase: FeedPhase =
     config.format === 'commander' && !commander ? 'commander-select' : 'build';
@@ -86,15 +89,22 @@ export function useRecommendationFeed() {
     .join(',');
 
   const tag = useCallback((cards: DeckCard[], existing: FeedItem[]): FeedItem[] => {
-    const existingIds = new Set(existing.map((c) => c.oracleId));
+    const snapshot = useDeckStore.getState();
+    // Build one lookup per fetched page. Calling `isSeen` for every card used
+    // linear array scans and became noticeably expensive after many swipes.
+    const existingIds = new Set([
+      ...snapshot.rejected,
+      ...snapshot.deck.map((c) => c.oracleId),
+      ...existing.map((c) => c.oracleId),
+    ]);
     const fresh: FeedItem[] = [];
     for (const c of cards) {
-      if (!c.image || isSeen(c.oracleId) || existingIds.has(c.oracleId)) continue;
+      if (!c.image || existingIds.has(c.oracleId)) continue;
       existingIds.add(c.oracleId);
       fresh.push({ ...c, seq: seqRef.current++ });
     }
     return fresh;
-  }, [isSeen]);
+  }, []);
 
   const buildRequest = useCallback(
     (): FeedRequest => ({
@@ -219,9 +229,15 @@ export function useRecommendationFeed() {
   }, [buildRequest, tag]);
 
   // Remove the top card after a decision; refill when running low.
-  const advance = useCallback(() => {
+  const advance = useCallback((decidedOracleId?: string) => {
     setState((s) => {
-      const queue = s.queue.slice(1);
+      // One decision applies to every queued printing of the same gameplay
+      // object. The fetch path already rolls them up, but this also cleans up
+      // duplicates from overlapping API responses.
+      const queue = s.queue.filter(
+        (card, index) =>
+          index > 0 && (!decidedOracleId || card.oracleId !== decidedOracleId),
+      );
       const canFallback =
         recommanderPrimaryRef.current && !fallbackStartedRef.current;
       return {
