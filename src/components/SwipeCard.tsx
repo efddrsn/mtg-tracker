@@ -53,7 +53,7 @@ export function SwipeCard({
           depth === 0 ? rotation(dx) : 0
         }deg) scale(${scale})`,
         transition: animate
-          ? 'transform 0.32s cubic-bezier(0.22, 0.61, 0.36, 1)'
+          ? 'transform 0.24s cubic-bezier(0.22, 0.61, 0.36, 1)'
           : 'none',
         zIndex: 100 - depth,
         opacity: depth > 1 ? 0 : 1,
@@ -66,6 +66,9 @@ export function SwipeCard({
             alt={card.name}
             className="swipe-card-img"
             draggable={false}
+            decoding="async"
+            loading={depth === 0 ? 'eager' : 'lazy'}
+            fetchPriority={depth === 0 ? 'high' : 'low'}
             onLoad={() => setLoaded(true)}
             style={{ opacity: loaded ? 1 : 0 }}
           />

@@ -19,7 +19,7 @@ type Axis = 'h' | 'v' | null;
 type Decision = 'add' | 'reject';
 
 const AXIS_LOCK = 10; // px before we commit to an axis
-const FLY_MS = 320;
+const FLY_MS = 240;
 
 export function SwipeDeck() {
   const navigate = useNavigate();
@@ -63,6 +63,26 @@ export function SwipeDeck() {
   const pointerId = useRef<number | null>(null);
   const busy = useRef(false);
   const history = useRef<{ card: DeckCard; decision: Decision }[]>([]);
+  const dragFrame = useRef<number | null>(null);
+  const pendingDrag = useRef({ x: 0, y: 0 });
+
+  const cancelPendingDrag = useCallback(() => {
+    if (dragFrame.current !== null) {
+      window.cancelAnimationFrame(dragFrame.current);
+      dragFrame.current = null;
+    }
+  }, []);
+
+  const updateDrag = useCallback((x: number, y: number) => {
+    pendingDrag.current = { x, y };
+    if (dragFrame.current !== null) return;
+    dragFrame.current = window.requestAnimationFrame(() => {
+      dragFrame.current = null;
+      setDrag(pendingDrag.current);
+    });
+  }, []);
+
+  useEffect(() => cancelPendingDrag, [cancelPendingDrag]);
 
   const top: DeckCard | undefined = feed.queue[0];
   const second: DeckCard | undefined = feed.queue[1];
@@ -118,17 +138,18 @@ export function SwipeDeck() {
       history.current.push({ card, decision });
 
       const w = window.innerWidth || 400;
+      cancelPendingDrag();
       setAnimate(true);
       setDrag({ x: decision === 'add' ? w * 1.3 : -w * 1.3, y: 0 });
 
       window.setTimeout(() => {
-        feed.advance();
+        feed.advance(card.oracleId);
         setAnimate(false);
         setDrag({ x: 0, y: 0 });
         busy.current = false;
       }, FLY_MS);
     },
-    [addToDeck, reject, skip, setCommander, pickingCommander, feed],
+    [addToDeck, reject, skip, setCommander, pickingCommander, feed, cancelPendingDrag],
   );
 
   const undo = useCallback(() => {
@@ -168,7 +189,7 @@ export function SwipeDeck() {
     }
 
     if (axis.current === 'h') {
-      setDrag({ x: dx, y: dy * 0.15 });
+      updateDrag(dx, dy * 0.15);
     } else if (dy > 0) {
       setConfigDragY(Math.min(dy, window.innerHeight));
     } else {
@@ -183,6 +204,7 @@ export function SwipeDeck() {
     const dy = e.clientY - start.current.y;
     const locked = axis.current;
     axis.current = null;
+    cancelPendingDrag();
 
     if (locked === 'h') {
       const threshold = (window.innerWidth || 400) * 0.26;

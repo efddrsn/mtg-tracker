@@ -639,6 +639,7 @@ input, button, select, textarea {
 .card-stage {
   position: relative;
   flex: 1;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -651,7 +652,10 @@ input, button, select, textarea {
   position: absolute;
   inset: 0;
   margin: auto;
-  height: min(80dvh, 132vw);
+  /* Reserve the top-bar area and always fit inside the remaining stage.
+     Width remains capped so the full card is visible on narrow phones. */
+  height: min(calc(100% - 54px), 132vw);
+  max-width: calc(100% - 16px);
   aspect-ratio: 488 / 680;
   transform-origin: center;
   will-change: transform;
@@ -1009,6 +1013,7 @@ input, button, select, textarea {
   color: var(--color-text-primary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.deck-row-quantity { color: var(--color-accent-hover); }
 .deck-row-meta { font-size: 11px; color: var(--color-text-dim); }
 .deck-row-remove {
   width: 30px; height: 30px;
@@ -1018,6 +1023,37 @@ input, button, select, textarea {
   color: var(--color-text-secondary);
   cursor: pointer;
   flex-shrink: 0;
+}
+
+/* Large blurred animated layers and several live backdrop filters compete with
+   swipe rendering on phones. Keep the same composition without continuous
+   GPU-heavy background animation on touch-first devices. */
+@media (hover: none) and (pointer: coarse) {
+  .aurora-blob {
+    animation: none;
+    filter: blur(56px);
+    will-change: auto;
+  }
+  body.bg-animated { animation: none; }
+  .topbar-btn,
+  .feed-banner,
+  .action-btn,
+  .tune-tab {
+    backdrop-filter: none;
+  }
+}
+
+@media (max-height: 640px) {
+  .swipe-topbar { padding-block: 6px; }
+  .topbar-btn { height: 34px; min-width: 34px; }
+  .swipe-card { height: min(calc(100% - 42px), 126vw); }
+  .swipe-actions {
+    gap: 18px;
+    padding: 6px 0 calc(8px + env(safe-area-inset-bottom));
+  }
+  .action-nope,
+  .action-add { width: 50px; height: 50px; }
+  .action-undo { width: 40px; height: 40px; }
 }
 
 /* ============================================================

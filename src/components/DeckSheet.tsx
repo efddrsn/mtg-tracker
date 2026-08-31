@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useDeckStore } from '../deck/deckStore';
+import { groupDeckCards } from '../deck/deckPresentation';
 import { AddCardSearch } from './AddCardSearch';
 
 interface DeckSheetProps {
@@ -24,9 +25,12 @@ export function DeckSheet({ open, dragY, onClose }: DeckSheetProps) {
       deck.reduce((sum, c) => sum + (c.priceUsd ? parseFloat(c.priceUsd) : 0), 0),
     [deck],
   );
+  const groupedDeck = useMemo(() => groupDeckCards(deck), [deck]);
 
   const exportList = () => {
-    const text = deck.map((c) => `1 ${c.name}`).join('\n');
+    const text = groupedDeck
+      .map(({ card, count }) => `${count} ${card.name}`)
+      .join('\n');
     navigator.clipboard?.writeText(text).catch(() => {});
   };
 
@@ -84,28 +88,32 @@ export function DeckSheet({ open, dragY, onClose }: DeckSheetProps) {
               <p className="deck-empty-hint">Swipe right on cards you like.</p>
             </div>
           ) : (
-            deck.map((c) => (
-              <div key={c.oracleId} className="deck-row">
-                {c.image && (
+            groupedDeck.map(({ card, count }) => (
+              <div key={card.oracleId} className="deck-row">
+                {card.image && (
                   <img
-                    src={c.image}
+                    src={card.image}
                     alt=""
                     className="deck-row-thumb"
                     loading="lazy"
+                    decoding="async"
                     draggable={false}
                   />
                 )}
                 <div className="deck-row-main">
-                  <span className="deck-row-name">{c.name}</span>
+                  <span className="deck-row-name">
+                    {card.name}
+                    {count > 1 && <span className="deck-row-quantity"> ×{count}</span>}
+                  </span>
                   <span className="deck-row-meta">
-                    {manaSymbols(c.manaCost)} · {c.typeLine.split('—')[0].trim()}
+                    {manaSymbols(card.manaCost)} · {card.typeLine.split('—')[0].trim()}
                   </span>
                 </div>
                 <button
                   type="button"
                   className="deck-row-remove"
-                  onClick={() => removeFromDeck(c.oracleId)}
-                  aria-label={`Remove ${c.name}`}
+                  onClick={() => removeFromDeck(card.oracleId)}
+                  aria-label={`Remove ${card.name}`}
                 >
                   ✕
                 </button>
