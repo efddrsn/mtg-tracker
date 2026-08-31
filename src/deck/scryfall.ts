@@ -308,6 +308,7 @@ interface ScryfallCard {
   scryfall_uri: string;
   games?: string[];
   legalities?: Record<string, string>;
+  finishes?: string[];
 }
 
 interface ScryfallList {
@@ -322,6 +323,12 @@ interface ScryfallList {
 function pickImage(uris?: ScryfallImageUris): string | null {
   if (!uris) return null;
   return uris.normal || uris.large || uris.png || uris.small || null;
+}
+
+function hasNonfoilFinish(card: ScryfallCard): boolean {
+  // Older fixtures/clients may omit `finishes`; current Scryfall objects
+  // always include it.
+  return !card.finishes || card.finishes.includes('nonfoil');
 }
 
 function normalize(card: ScryfallCard): DeckCard {
@@ -391,7 +398,9 @@ async function request(url: string, signal?: AbortSignal): Promise<ScryfallList>
 
 function toPage(body: ScryfallList): RecommendationPage {
   return {
-    cards: (body.data ?? []).filter((c) => c.image_uris || c.card_faces).map(normalize),
+    cards: (body.data ?? [])
+      .filter((c) => hasNonfoilFinish(c) && (c.image_uris || c.card_faces))
+      .map(normalize),
     nextPage: body.has_more ? body.next_page ?? null : null,
     totalCards: body.total_cards ?? 0,
   };
@@ -432,7 +441,7 @@ async function searchByQuery(query: string, signal?: AbortSignal): Promise<DeckC
   });
   const body = await request(`${SEARCH_URL}?${params.toString()}`, signal);
   return (body.data ?? [])
-    .filter((c) => c.image_uris || c.card_faces)
+    .filter((c) => hasNonfoilFinish(c) && (c.image_uris || c.card_faces))
     .map(normalize)
     .slice(0, 12);
 }
@@ -449,7 +458,9 @@ export async function fetchByOracleTag(
   const query = [...baseClauses(config, commanderIdentity), `otag:${otag}`].join(' ');
   const params = new URLSearchParams({ q: query, order: 'edhrec', dir: 'asc', unique: 'cards' });
   const body = await request(`${SEARCH_URL}?${params.toString()}`, signal);
-  return (body.data ?? []).filter((c) => c.image_uris || c.card_faces).map(normalize);
+  return (body.data ?? [])
+    .filter((c) => hasNonfoilFinish(c) && (c.image_uris || c.card_faces))
+    .map(normalize);
 }
 
 // Search legal commanders by (partial) name — powers the "find my commander"
@@ -553,7 +564,9 @@ async function fetchCollection(
     if (!res.ok) {
       throw new ScryfallError(body.details ?? `Scryfall error ${res.status}`, res.status);
     }
-    for (const c of body.data ?? []) cards.push(normalize(c));
+    for (const c of body.data ?? []) {
+      if (hasNonfoilFinish(c)) cards.push(normalize(c));
+    }
     for (const nf of body.not_found ?? []) if (nf.name) notFound.push(nf.name);
   }
   return { cards, notFound };
