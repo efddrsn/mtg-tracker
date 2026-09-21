@@ -137,7 +137,15 @@ export function useRecommendationFeed() {
             },
             ctrl.signal,
           );
-          return { cards, nextPage: null, totalCards: cards.length };
+          if (cards.length > 0) {
+            return { cards, nextPage: null, totalCards: cards.length };
+          }
+          // A valid-but-empty model response is common for brand-new
+          // commanders. Treat it exactly like model unavailability so the
+          // legal Scryfall/EDHREC feed takes over instead of showing an empty
+          // terminal state.
+          recommanderPrimaryRef.current = false;
+          fallbackStartedRef.current = true;
         } catch (error) {
           if (ctrl.signal.aborted) throw error;
           // The model is primary, not a single point of failure. A Scryfall
