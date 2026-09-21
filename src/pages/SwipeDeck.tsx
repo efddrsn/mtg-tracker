@@ -16,7 +16,7 @@ function vibrate(ms: number) {
 }
 
 type Axis = 'h' | 'v' | null;
-type Decision = 'add' | 'reject';
+type Decision = 'wishlist' | 'owned' | 'reject';
 
 const AXIS_LOCK = 10; // px before we commit to an axis
 const FLY_MS = 320;
@@ -24,13 +24,15 @@ const FLY_MS = 320;
 export function SwipeDeck() {
   const navigate = useNavigate();
   const feed = useRecommendationFeed();
-  const addToDeck = useDeckStore((s) => s.addToDeck);
+  const addToWishlist = useDeckStore((s) => s.addToWishlist);
+  const addToOwned = useDeckStore((s) => s.addToOwned);
   const reject = useDeckStore((s) => s.reject);
   const skip = useDeckStore((s) => s.skip);
   const setCommander = useDeckStore((s) => s.setCommander);
   const clearCommander = useDeckStore((s) => s.clearCommander);
-  const removeFromDeck = useDeckStore((s) => s.removeFromDeck);
-  const deckCount = useDeckStore((s) => s.deck.length);
+  const removeFromList = useDeckStore((s) => s.removeFromList);
+  const wishlistCount = useDeckStore((s) => s.deck.length);
+  const ownedCount = useDeckStore((s) => s.owned.length);
   const commander = useDeckStore((s) => s.commander);
 
   const pickingCommander = feed.phase === 'commander-select';
@@ -103,13 +105,14 @@ export function SwipeDeck() {
       const card = feed.queue[0];
       if (!card || busy.current) return;
       busy.current = true;
-      vibrate(decision === 'add' ? 18 : 10);
+      vibrate(decision === 'reject' ? 10 : 18);
 
-      if (decision === 'add') {
+      if (decision !== 'reject') {
         // A "yes" in the commander phase locks in the commander and pivots the
         // whole feed to its color identity; otherwise it's a normal deck add.
         if (pickingCommander) setCommander(card);
-        else addToDeck(card);
+        else if (decision === 'owned') addToOwned(card);
+        else addToWishlist(card);
       } else {
         // Passing on a commander shouldn't train the preference model.
         if (pickingCommander) skip(card);
@@ -119,7 +122,11 @@ export function SwipeDeck() {
 
       const w = window.innerWidth || 400;
       setAnimate(true);
-      setDrag({ x: decision === 'add' ? w * 1.3 : -w * 1.3, y: 0 });
+      const h = window.innerHeight || 700;
+      setDrag({
+        x: decision === 'reject' ? -w * 1.3 : w * 1.3,
+        y: decision === 'wishlist' ? -h * 0.42 : decision === 'owned' ? h * 0.42 : 0,
+      });
 
       window.setTimeout(() => {
         feed.advance();
@@ -128,7 +135,7 @@ export function SwipeDeck() {
         busy.current = false;
       }, FLY_MS);
     },
-    [addToDeck, reject, skip, setCommander, pickingCommander, feed],
+    [addToWishlist, addToOwned, reject, skip, setCommander, pickingCommander, feed],
   );
 
   const undo = useCallback(() => {
@@ -138,11 +145,11 @@ export function SwipeDeck() {
     vibrate(8);
     // Reverse the store side-effect (removeFromDeck also clears any rejected
     // flag), then re-show the card on top of the feed.
-    removeFromDeck(last.card.oracleId);
+    removeFromList(last.decision === 'owned' ? 'owned' : 'wishlist', last.card.oracleId);
     feed.pushFront(last.card);
     setAnimate(false);
     setDrag({ x: 0, y: 0 });
-  }, [removeFromDeck, feed]);
+  }, [removeFromList, feed]);
 
   // --- Pointer gesture handling ---------------------------------------------
 
@@ -161,14 +168,14 @@ export function SwipeDeck() {
 
     if (axis.current === null) {
       if (Math.abs(dx) < AXIS_LOCK && Math.abs(dy) < AXIS_LOCK) return;
-      axis.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+      axis.current = Math.abs(dx) > Math.abs(dy) * 0.55 ? 'h' : 'v';
       try {
         (e.target as Element).setPointerCapture?.(e.pointerId);
       } catch { /* ignore */ }
     }
 
     if (axis.current === 'h') {
-      setDrag({ x: dx, y: dy * 0.15 });
+      setDrag({ x: dx, y: dy });
     } else if (dy > 0) {
       setConfigDragY(Math.min(dy, window.innerHeight));
     } else {
@@ -187,7 +194,7 @@ export function SwipeDeck() {
     if (locked === 'h') {
       const threshold = (window.innerWidth || 400) * 0.26;
       if (dx > threshold) {
-        commit('add');
+        commit(pickingCommander || dy <= 0 ? 'wishlist' : 'owned');
       } else if (dx < -threshold) {
         commit('reject');
       } else {
@@ -305,7 +312,7 @@ export function SwipeDeck() {
           onClick={() => setDeckOpen(true)}
           aria-label="Deck"
         >
-          ♥ {deckCount}
+          ♡ {wishlistCount} · ✓ {ownedCount}
         </button>
       </header>
 
@@ -390,11 +397,20 @@ export function SwipeDeck() {
         <button
           type="button"
           className="action-btn action-add"
-          onClick={() => commit('add')}
+          onClick={() => commit('wishlist')}
           disabled={!top}
-          aria-label="Add to deck"
+          aria-label="Adicionar à wishlist"
         >
-          ♥
+          ↗
+        </button>
+        <button
+          type="button"
+          className="action-btn action-owned"
+          onClick={() => commit('owned')}
+          disabled={!top || pickingCommander}
+          aria-label="Marcar como já tenho"
+        >
+          ↘
         </button>
       </footer>
 
