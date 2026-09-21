@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchLigaMagicPrice, ligaMagicUrl } from './server/ligamagic-price.mjs';
+import { fetchCommanderTopPicks } from './server/recommander-page.mjs';
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), 'dist');
 const port = Number(process.env.PORT ?? 3000);
@@ -10,6 +11,8 @@ const upstream =
   process.env.RECOMMANDER_UPSTREAM ?? 'https://recommander.cards/api/decks/recommend';
 const brPriceCache = new Map();
 const BR_PRICE_TTL_MS = 6 * 60 * 60 * 1000;
+const commanderPicksCache = new Map();
+const COMMANDER_PICKS_TTL_MS = 6 * 60 * 60 * 1000;
 
 const mime = {
   '.css': 'text/css; charset=utf-8',
@@ -29,6 +32,21 @@ function json(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+async function cachedCommanderTopPicks(oracleId) {
+  const cached = commanderPicksCache.get(oracleId);
+  if (cached && Date.now() - cached.cachedAt < COMMANDER_PICKS_TTL_MS) {
+    return cached.recommendations;
+  }
+  const recommendations = await fetchCommanderTopPicks(
+    oracleId,
+    AbortSignal.timeout(15_000),
+  );
+  if (recommendations.length > 0) {
+    commanderPicksCache.set(oracleId, { cachedAt: Date.now(), recommendations });
+  }
+  return recommendations;
+}
+
 async function proxyRecommander(req, res) {
   if (req.method !== 'POST') {
     json(res, 405, { message: 'Method not allowed' });
@@ -44,11 +62,32 @@ async function proxyRecommander(req, res) {
     }
   }
 
+  let requestBody;
   try {
-    JSON.parse(body);
+    requestBody = JSON.parse(body);
   } catch {
     json(res, 400, { message: 'Invalid JSON body' });
     return;
+  }
+
+  const coldStart =
+    requestBody.card_format === 'oracle_id' &&
+    typeof requestBody.commander === 'string' &&
+    Array.isArray(requestBody.deck) &&
+    requestBody.deck.length === 0;
+  // Commander Top Picks are fetched in parallel for cold starts. This avoids
+  // waiting for a slow empty model response before requesting the useful
+  // globally ranked list.
+  const coldStartFallback = coldStart
+    ? cachedCommanderTopPicks(requestBody.commander).catch(() => [])
+    : Promise.resolve([]);
+
+  if (coldStart) {
+    const recommendations = await coldStartFallback;
+    if (recommendations.length > 0) {
+      json(res, 200, { recommendations });
+      return;
+    }
   }
 
   try {
@@ -61,13 +100,39 @@ async function proxyRecommander(req, res) {
       body,
       signal: AbortSignal.timeout(15_000),
     });
-    const responseBody = await response.text();
+    let responseBody = await response.text();
+    if (response.ok) {
+      try {
+        const parsed = JSON.parse(responseBody);
+        if (
+          Array.isArray(parsed.recommendations) &&
+          parsed.recommendations.length === 0 &&
+          requestBody.card_format === 'oracle_id' &&
+          typeof requestBody.commander === 'string'
+        ) {
+          const recommendations = coldStart
+            ? await coldStartFallback
+            : await cachedCommanderTopPicks(requestBody.commander);
+          if (recommendations.length > 0) {
+            responseBody = JSON.stringify({ ...parsed, recommendations });
+          }
+        }
+      } catch {
+        // Preserve the upstream response if its optional cold-start fallback
+        // is unavailable or the response is not JSON.
+      }
+    }
     res.writeHead(response.status, {
       'Content-Type': response.headers.get('content-type') ?? 'application/json',
       'Cache-Control': 'no-store',
     });
     res.end(responseBody);
   } catch {
+    const recommendations = await coldStartFallback;
+    if (recommendations.length > 0) {
+      json(res, 200, { recommendations });
+      return;
+    }
     json(res, 502, { message: 'Could not reach Recommander.' });
   }
 }
@@ -77,13 +142,16 @@ async function brazilPrice(req, res) {
     json(res, 405, { message: 'Method not allowed' });
     return;
   }
-  const name = new URL(req.url ?? '/', 'http://localhost').searchParams.get('name')?.trim();
+  const params = new URL(req.url ?? '/', 'http://localhost').searchParams;
+  const name = params.get('name')?.trim();
+  const setCode = params.get('set')?.trim() ?? '';
+  const collectorNumber = params.get('collector')?.trim() ?? '';
   if (!name || name.length > 180) {
     json(res, 400, { message: 'A valid card name is required.' });
     return;
   }
 
-  const key = name.toLocaleLowerCase('en');
+  const key = [name.toLocaleLowerCase('en'), setCode.toLowerCase(), collectorNumber].join('|');
   const cached = brPriceCache.get(key);
   if (cached && Date.now() - cached.cachedAt < BR_PRICE_TTL_MS) {
     json(res, 200, cached.body);
@@ -91,9 +159,14 @@ async function brazilPrice(req, res) {
   }
 
   try {
-    const result = await fetchLigaMagicPrice(name, AbortSignal.timeout(10_000));
+    const result = await fetchLigaMagicPrice(
+      name,
+      { setCode, collectorNumber },
+      AbortSignal.timeout(10_000),
+    );
     const body = {
       price: result.price,
+      printingMatched: result.printingMatched,
       source: 'LigaMagic',
       url: result.url,
       checkedAt: new Date().toISOString(),
@@ -105,6 +178,7 @@ async function brazilPrice(req, res) {
     // when LigaMagic rate-limits or challenges this server.
     json(res, 200, {
       price: null,
+      printingMatched: false,
       source: 'LigaMagic',
       url: ligaMagicUrl(name),
       checkedAt: new Date().toISOString(),

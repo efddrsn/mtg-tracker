@@ -115,7 +115,14 @@ export function SwipeCard({
             ⟳
           </button>
         )}
-        {depth === 0 && <BrazilPriceBadge name={card.name} className="swipe-price" />}
+        {depth === 0 && (
+          <BrazilPriceBadge
+            name={card.name}
+            setCode={card.setCode}
+            collectorNumber={card.collectorNumber}
+            className="swipe-price"
+          />
+        )}
       </div>
     </div>
   );
