@@ -148,9 +148,50 @@ describe('Recommander query', () => {
       }),
     );
   });
+
+  it('enforces commander color identity, legality, type and theme filters', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ recommendations: [
+        { oracle_id: 'red', name: 'Red Dragon', score: 0.8, commander_count: 100 },
+        { oracle_id: 'blue', name: 'Blue Dragon', score: 0.9, commander_count: 100 },
+        { oracle_id: 'land', name: 'Treasure Land', score: 0.7, commander_count: 100 },
+      ] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [
+        scryfallCard('red', 'Red Dragon', 'Creature — Dragon', {
+          color_identity: ['R'], oracle_text: 'Create a Treasure token.'
+        }),
+        scryfallCard('blue', 'Blue Dragon', 'Creature — Dragon', {
+          color_identity: ['U'], oracle_text: 'Create a Treasure token.'
+        }),
+        scryfallCard('land', 'Treasure Land', 'Land', {
+          color_identity: ['R'], oracle_text: 'Create a Treasure token.'
+        }),
+      ] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const commander = card({
+      oracleId: 'smaug',
+      name: 'Smaug',
+      colorIdentity: ['R'],
+      legalities: { commander: 'legal' },
+    });
+    const results = await fetchRecommanderRecommendations({
+      commander,
+      deck: [],
+      config: { ...config, colors: ['R'], kinds: ['creature'], theme: 'treasure' },
+    });
+
+    expect(results.map((item) => item.name)).toEqual(['Red Dragon']);
+  });
 });
 
-function scryfallCard(oracleId: string, name: string, typeLine = 'Creature') {
+function scryfallCard(
+  oracleId: string,
+  name: string,
+  typeLine = 'Creature',
+  overrides: Record<string, unknown> = {},
+) {
   return {
     id: `${oracleId}-printing`,
     oracle_id: oracleId,
@@ -169,5 +210,6 @@ function scryfallCard(oracleId: string, name: string, typeLine = 'Creature') {
     scryfall_uri: `https://scryfall.com/card/${oracleId}`,
     games: ['paper'],
     legalities: { commander: 'legal' },
+    ...overrides,
   };
 }

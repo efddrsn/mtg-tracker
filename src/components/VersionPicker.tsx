@@ -77,7 +77,11 @@ export function VersionPicker({ card, list, onClose }: VersionPickerProps) {
                   {printingTags(selected).map((tag) => <span key={tag}>{tag}</span>)}
                 </div>
                 {selected.artist && <em>Arte: {selected.artist}</em>}
-                <BrazilPriceBadge name={selected.name} />
+                <BrazilPriceBadge
+                  name={selected.name}
+                  setCode={selected.setCode}
+                  collectorNumber={selected.collectorNumber}
+                />
               </div>
             </div>
 

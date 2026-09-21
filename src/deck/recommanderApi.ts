@@ -97,7 +97,9 @@ export async function fetchRecommanderRecommendations(
         Number.isFinite(item.score),
     )
     .sort((a, b) => adjustedRecommendationScore(b) - adjustedRecommendationScore(a))
-    .slice(0, 50);
+    // Apply UI filters after hydration, so a restrictive filter does not only
+    // inspect the first 50 upstream cards and incorrectly report no matches.
+    .slice(0, 225);
 
   if (recommendations.length === 0) return [];
 
@@ -109,11 +111,14 @@ export async function fetchRecommanderRecommendations(
 
   return recommendations.flatMap((item, rank) => {
     const card = byOracleId.get(item.oracle_id);
-    if (!card || !matchesRecommendationFilters(card, query.config)) return [];
+    if (
+      !card ||
+      !matchesRecommendationFilters(card, query.config, query.commander.colorIdentity)
+    ) return [];
     return [{
       ...card,
       recommendationScore: adjustedRecommendationScore(item),
       recommendationRank: rank,
     }];
-  });
+  }).slice(0, 100);
 }

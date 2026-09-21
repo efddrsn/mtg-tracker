@@ -61,7 +61,11 @@ function CardRow({
           {card.setCode ? ` · ${card.setCode.toUpperCase()} #${card.collectorNumber}` : ''}
         </span>
         <div className="deck-row-tools">
-          <BrazilPriceBadge name={card.name} />
+          <BrazilPriceBadge
+            name={card.name}
+            setCode={card.setCode}
+            collectorNumber={card.collectorNumber}
+          />
           <button type="button" onClick={() => onVersion(card)}>Versão</button>
         </div>
       </div>

@@ -37,7 +37,21 @@ function comparableName(value) {
     .toLocaleLowerCase('en');
 }
 
-export function parseLigaMagicPrice(html, requestedName) {
+function normalizeToken(value) {
+  return String(value ?? '').trim().toLocaleLowerCase('en').replace(/[^a-z0-9]/g, '');
+}
+
+function rowPrices(row) {
+  const direct = [row.p1a, row.precoMenor];
+  const byLanguage = row.price && typeof row.price === 'object'
+    ? Object.values(row.price).flatMap((entry) => entry && typeof entry === 'object' ? [entry.p] : [])
+    : [];
+  return [...direct, ...byLanguage]
+    .map(Number)
+    .filter((price) => Number.isFinite(price) && price > 0);
+}
+
+export function parseLigaMagicPrice(html, requestedName, printing = {}) {
   const rows = extractJsonArray(html, 'cardsjson')
     ?? extractJsonArray(html, 'cards_editions');
   if (!Array.isArray(rows) || rows.length === 0) return null;
@@ -47,18 +61,40 @@ export function parseLigaMagicPrice(html, requestedName) {
     comparableName(row.nEN ?? row.name) === wanted
     || comparableName(row.nPT) === wanted,
   );
-  const candidates = exact.length > 0 ? exact : rows;
-  const prices = candidates
-    .map((row) => Number(row.p1a ?? row.precoMenor ?? row?.price?.[0]?.p))
-    .filter((price) => Number.isFinite(price) && price > 0);
-  return prices.length > 0 ? Math.min(...prices) : null;
+  const namedCandidates = exact.length > 0 ? exact : rows;
+  const set = normalizeToken(printing.setCode);
+  const collector = normalizeToken(printing.collectorNumber);
+  const sameSet = set
+    ? namedCandidates.filter((row) => normalizeToken(row.code ?? row.sSigla) === set)
+    : [];
+  const sameCollector = collector
+    ? namedCandidates.filter((row) => normalizeToken(row.num ?? row.collectorNumber) === collector)
+    : [];
+  const exactPrinting = set && collector
+    ? namedCandidates.filter((row) =>
+        normalizeToken(row.code ?? row.sSigla) === set &&
+        normalizeToken(row.num ?? row.collectorNumber) === collector)
+    : [];
+
+  const candidates = exactPrinting.length > 0
+    ? exactPrinting
+    : sameCollector.length > 0
+      ? sameCollector
+      : sameSet.length > 0
+        ? sameSet
+        : namedCandidates;
+  const prices = candidates.flatMap(rowPrices);
+  return {
+    price: prices.length > 0 ? Math.min(...prices) : null,
+    printingMatched: exactPrinting.length > 0 || sameCollector.length > 0 || sameSet.length > 0,
+  };
 }
 
 export function ligaMagicUrl(name) {
   return `${LIGA_URL}${encodeURIComponent(name.split(' // ')[0].trim())}`;
 }
 
-export async function fetchLigaMagicPrice(name, signal) {
+export async function fetchLigaMagicPrice(name, printing = {}, signal) {
   const url = ligaMagicUrl(name);
   const response = await fetch(url, {
     headers: {
@@ -69,5 +105,10 @@ export async function fetchLigaMagicPrice(name, signal) {
     signal,
   });
   if (!response.ok) throw new Error(`LigaMagic HTTP ${response.status}`);
-  return { price: parseLigaMagicPrice(await response.text(), name), url };
+  const parsed = parseLigaMagicPrice(await response.text(), name, printing);
+  return {
+    price: parsed?.price ?? null,
+    printingMatched: parsed?.printingMatched ?? false,
+    url,
+  };
 }

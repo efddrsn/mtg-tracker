@@ -566,7 +566,25 @@ export interface ImportResult {
 // Apply filters that Recommander itself does not know about. Commander
 // legality and color identity are handled by the recommendation model; these
 // are the player's optional UI constraints.
-export function matchesRecommendationFilters(card: DeckCard, config: DeckConfig): boolean {
+export function matchesRecommendationFilters(
+  card: DeckCard,
+  config: DeckConfig,
+  commanderIdentity: ColorCode[] | null = null,
+): boolean {
+  const legality = card.legalities[config.format];
+  if (legality && legality !== 'legal' && legality !== 'restricted') return false;
+
+  const allowedColors = commanderIdentity ?? config.colors;
+  if (allowedColors.length > 0) {
+    const allowed = new Set(allowedColors);
+    const withinIdentity = card.colorIdentity.every((color) => allowed.has(color));
+    if (!withinIdentity) return false;
+    if (!commanderIdentity && config.colorRule === 'exact') {
+      const cardIdentity = new Set(card.colorIdentity);
+      if (allowedColors.some((color) => !cardIdentity.has(color))) return false;
+    }
+  }
+
   if (config.hideBasics && /\bbasic land\b/i.test(card.typeLine)) return false;
   if (config.arenaOnly && !card.games.includes('arena')) return false;
   if (config.rarities.length > 0 && !config.rarities.includes(card.rarity as Rarity)) {
