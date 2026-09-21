@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import type { DeckCard } from '../deck/scryfall';
-
-export type SwipeDecision = 'add' | 'reject';
+import { BrazilPriceBadge } from './BrazilPriceBadge';
 
 interface SwipeCardProps {
   card: DeckCard;
@@ -41,8 +40,16 @@ export function SwipeCard({
   const translateY = depth === 0 ? dy : depth * 14 + dy * 0.4;
   const translateX = depth === 0 ? dx : 0;
 
-  // Overlay opacity derived from horizontal drag magnitude.
-  const addOpacity = interactive ? Math.max(0, Math.min(1, dx / 110)) : 0;
+  // Right-up and right-down are two distinct positive decisions. Keeping the
+  // labels visible during the drag makes the diagonal gesture discoverable.
+  const rightOpacity = interactive ? Math.max(0, Math.min(1, dx / 110)) : 0;
+  const commanderMode = addLabel === 'COMMANDER';
+  const wishOpacity = commanderMode
+    ? rightOpacity
+    : rightOpacity * Math.max(0, Math.min(1, (-dy + 34) / 78));
+  const ownedOpacity = commanderMode
+    ? 0
+    : rightOpacity * Math.max(0, Math.min(1, (dy + 34) / 78));
   const nopeOpacity = interactive ? Math.max(0, Math.min(1, -dx / 110)) : 0;
 
   return (
@@ -76,14 +83,20 @@ export function SwipeCard({
         {!loaded && img && <div className="swipe-card-skeleton" />}
 
         {/* Decision overlays */}
-        <div
-          className={`swipe-badge swipe-badge-add ${
-            addLabel.length > 4 ? 'swipe-badge-wide' : ''
-          }`}
-          style={{ opacity: addOpacity }}
-        >
-          {addLabel}
-        </div>
+        {commanderMode ? (
+          <div className="swipe-badge swipe-badge-add swipe-badge-wide" style={{ opacity: wishOpacity }}>
+            COMMANDER
+          </div>
+        ) : (
+          <>
+            <div className="swipe-badge swipe-badge-wishlist" style={{ opacity: wishOpacity }}>
+              WISHLIST ↗
+            </div>
+            <div className="swipe-badge swipe-badge-owned" style={{ opacity: ownedOpacity }}>
+              JÁ TENHO ↘
+            </div>
+          </>
+        )}
         <div className="swipe-badge swipe-badge-nope" style={{ opacity: nopeOpacity }}>
           NOPE
         </div>
@@ -102,6 +115,7 @@ export function SwipeCard({
             ⟳
           </button>
         )}
+        {depth === 0 && <BrazilPriceBadge name={card.name} className="swipe-price" />}
       </div>
     </div>
   );

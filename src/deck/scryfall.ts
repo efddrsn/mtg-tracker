@@ -113,6 +113,16 @@ export interface DeckCard {
   image: string | null;
   backImage: string | null;
   priceUsd: string | null;
+  setCode?: string;
+  setName?: string;
+  collectorNumber?: string;
+  language?: string;
+  artist?: string | null;
+  releasedAt?: string | null;
+  illustrationId?: string | null;
+  borderColor?: string | null;
+  frameEffects?: string[];
+  finishes?: string[];
   scryfallUri: string;
   oracleText: string;
   games: string[];
@@ -298,6 +308,16 @@ interface ScryfallCard {
   image_uris?: ScryfallImageUris;
   card_faces?: ScryfallCardFace[];
   prices?: { usd?: string | null };
+  set?: string;
+  set_name?: string;
+  collector_number?: string;
+  lang?: string;
+  artist?: string;
+  released_at?: string;
+  illustration_id?: string;
+  border_color?: string;
+  frame_effects?: string[];
+  finishes?: string[];
   scryfall_uri: string;
   games?: string[];
   legalities?: Record<string, string>;
@@ -342,6 +362,16 @@ function normalize(card: ScryfallCard): DeckCard {
     image: pickImage(front),
     backImage: pickImage(back),
     priceUsd: card.prices?.usd ?? null,
+    setCode: card.set ?? '',
+    setName: card.set_name ?? '',
+    collectorNumber: card.collector_number ?? '',
+    language: card.lang ?? 'en',
+    artist: card.artist ?? null,
+    releasedAt: card.released_at ?? null,
+    illustrationId: card.illustration_id ?? null,
+    borderColor: card.border_color ?? null,
+    frameEffects: card.frame_effects ?? [],
+    finishes: card.finishes ?? [],
     scryfallUri: card.scryfall_uri,
     oracleText: oracle,
     games: card.games ?? [],
@@ -467,6 +497,36 @@ export async function searchCards(
   const term = name.trim();
   if (!term) return [];
   return searchByQuery(buildNameSearchQuery(config, commanderIdentity, term), signal);
+}
+
+// All paper printings for the version picker. This intentionally keeps
+// printings distinct, unlike the recommendation feed's `unique=cards` mode.
+export async function fetchPrintings(
+  cardName: string,
+  signal?: AbortSignal,
+): Promise<DeckCard[]> {
+  const frontName = cardName.split(' // ')[0].trim();
+  const params = new URLSearchParams({
+    q: `!"${frontName.replace(/"/g, '\\"')}" game:paper`,
+    order: 'released',
+    dir: 'desc',
+    unique: 'prints',
+  });
+
+  const cards: DeckCard[] = [];
+  let next: string | null = `${SEARCH_URL}?${params.toString()}`;
+  let pageCount = 0;
+  while (next && pageCount < 4) {
+    const body = await request(next, signal);
+    cards.push(
+      ...(body.data ?? [])
+        .filter((c) => c.image_uris || c.card_faces)
+        .map(normalize),
+    );
+    next = body.has_more ? body.next_page ?? null : null;
+    pageCount += 1;
+  }
+  return cards;
 }
 
 // --- Decklist import --------------------------------------------------------

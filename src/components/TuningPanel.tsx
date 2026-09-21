@@ -12,6 +12,7 @@ interface TuningPanelProps {
 export function TuningPanel({ open, dragX, onClose }: TuningPanelProps) {
   const swipeCount = useDeckStore((s) => s.swipeCount);
   const deckCount = useDeckStore((s) => s.deck.length);
+  const ownedCount = useDeckStore((s) => s.owned.length);
   const passedCount = useDeckStore((s) => {
     const selected = new Set(s.deck.map((card) => card.oracleId));
     return s.rejected.filter((oracleId) => !selected.has(oracleId)).length;
@@ -79,7 +80,8 @@ export function TuningPanel({ open, dragX, onClose }: TuningPanelProps) {
           </div>
 
           <p className="tune-summary">
-            {swipeCount} swipe{swipeCount === 1 ? '' : 's'} · {deckCount} selected ·{' '}
+            {swipeCount} swipe{swipeCount === 1 ? '' : 's'} · {deckCount} wishlist ·{' '}
+            {ownedCount} já tenho ·{' '}
             {passedCount} passed
           </p>
 

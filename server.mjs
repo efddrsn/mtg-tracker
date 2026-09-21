@@ -2,11 +2,14 @@ import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fetchLigaMagicPrice, ligaMagicUrl } from './server/ligamagic-price.mjs';
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), 'dist');
 const port = Number(process.env.PORT ?? 3000);
 const upstream =
   process.env.RECOMMANDER_UPSTREAM ?? 'https://recommander.cards/api/decks/recommend';
+const brPriceCache = new Map();
+const BR_PRICE_TTL_MS = 6 * 60 * 60 * 1000;
 
 const mime = {
   '.css': 'text/css; charset=utf-8',
@@ -69,6 +72,46 @@ async function proxyRecommander(req, res) {
   }
 }
 
+async function brazilPrice(req, res) {
+  if (req.method !== 'GET') {
+    json(res, 405, { message: 'Method not allowed' });
+    return;
+  }
+  const name = new URL(req.url ?? '/', 'http://localhost').searchParams.get('name')?.trim();
+  if (!name || name.length > 180) {
+    json(res, 400, { message: 'A valid card name is required.' });
+    return;
+  }
+
+  const key = name.toLocaleLowerCase('en');
+  const cached = brPriceCache.get(key);
+  if (cached && Date.now() - cached.cachedAt < BR_PRICE_TTL_MS) {
+    json(res, 200, cached.body);
+    return;
+  }
+
+  try {
+    const result = await fetchLigaMagicPrice(name, AbortSignal.timeout(10_000));
+    const body = {
+      price: result.price,
+      source: 'LigaMagic',
+      url: result.url,
+      checkedAt: new Date().toISOString(),
+    };
+    brPriceCache.set(key, { cachedAt: Date.now(), body });
+    json(res, 200, body);
+  } catch {
+    // A direct market link still gives the client a useful, honest fallback
+    // when LigaMagic rate-limits or challenges this server.
+    json(res, 200, {
+      price: null,
+      source: 'LigaMagic',
+      url: ligaMagicUrl(name),
+      checkedAt: new Date().toISOString(),
+    });
+  }
+}
+
 function serveStatic(req, res) {
   const pathname = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
   const relative = normalize(pathname).replace(/^(\.\.[/\\])+/, '').replace(/^[/\\]+/, '');
@@ -91,6 +134,10 @@ function serveStatic(req, res) {
 createServer((req, res) => {
   if (req.url?.startsWith('/api/recommander')) {
     void proxyRecommander(req, res);
+    return;
+  }
+  if (req.url?.startsWith('/api/prices/br')) {
+    void brazilPrice(req, res);
     return;
   }
   serveStatic(req, res);
