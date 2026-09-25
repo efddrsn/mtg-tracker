@@ -43,6 +43,10 @@ function brlNumber(value) {
 export function cardTutorSearchUrl(name) {
   const url = new URL(CARDTUTOR_ORIGIN);
   url.searchParams.set('view', 'ecom/itens');
+  // CardTutor redirects an exact match straight to its stable refid product
+  // page. The URL therefore remains useful even if our server cannot resolve
+  // the redirect while exporting.
+  url.searchParams.set('searchExactMatch', '1');
   url.searchParams.set('busca', String(name ?? '').split(' // ')[0].trim());
   url.searchParams.set('btnEnviar', '1');
   return url.toString();
@@ -99,7 +103,19 @@ export async function resolveCardTutorCard(name, signal) {
   const searchUrl = cardTutorSearchUrl(name);
   const searchResponse = await fetch(searchUrl, { headers: requestHeaders, signal });
   if (!searchResponse.ok) throw new Error(`CardTutor search HTTP ${searchResponse.status}`);
-  const product = parseCardTutorSearch(await searchResponse.text(), name);
+  const searchHtml = await searchResponse.text();
+  const redirected = new URL(searchResponse.url);
+  const redirectedRefid = redirected.searchParams.get('refid');
+  if (redirected.searchParams.get('view') === 'ecom/item' && redirectedRefid) {
+    return {
+      name,
+      url: `${CARDTUTOR_ORIGIN}?view=ecom/item&refid=${encodeURIComponent(redirectedRefid)}`,
+      matched: true,
+      listings: parseCardTutorListings(searchHtml),
+    };
+  }
+
+  const product = parseCardTutorSearch(searchHtml, name);
   if (!product) return { name, url: searchUrl, matched: false, listings: [] };
 
   const itemResponse = await fetch(product.url, { headers: requestHeaders, signal });

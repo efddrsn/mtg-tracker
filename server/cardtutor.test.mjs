@@ -9,6 +9,7 @@ describe('CardTutor adapter', () => {
   it('builds a CardTutor search fallback', () => {
     const url = new URL(cardTutorSearchUrl('Fire // Ice'));
     expect(url.searchParams.get('view')).toBe('ecom/itens');
+    expect(url.searchParams.get('searchExactMatch')).toBe('1');
     expect(url.searchParams.get('busca')).toBe('Fire');
   });
 
