@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useDeckStore, type CardList, type SavedCard } from '../deck/deckStore';
 import { AddCardSearch } from './AddCardSearch';
 import { BrazilPriceBadge } from './BrazilPriceBadge';
+import { CardTutorExport } from './CardTutorExport';
 import { VersionPicker } from './VersionPicker';
 
 interface DeckSheetProps {
@@ -93,6 +94,7 @@ export function DeckSheet({ open, dragY, onClose }: DeckSheetProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [preview, setPreview] = useState<SavedCard | null>(null);
   const [versionCard, setVersionCard] = useState<SavedCard | null>(null);
+  const [storeExportOpen, setStoreExportOpen] = useState(false);
   const cards = active === 'wishlist' ? wishlist : owned;
 
   const exportList = () => {
@@ -148,6 +150,11 @@ export function DeckSheet({ open, dragY, onClose }: DeckSheetProps) {
 
         <div className="collection-actions">
           <button type="button" onClick={exportList} disabled={cards.length === 0}>Copiar lista</button>
+          {active === 'wishlist' && (
+            <button type="button" onClick={() => setStoreExportOpen(true)} disabled={cards.length === 0}>
+              Links de compra
+            </button>
+          )}
           <button type="button" onClick={() => clearList(active)} disabled={cards.length === 0}>Limpar</button>
           <details className="revision-menu">
             <summary>Histórico ({revisions.length})</summary>
@@ -194,6 +201,9 @@ export function DeckSheet({ open, dragY, onClose }: DeckSheetProps) {
       )}
       {versionCard && (
         <VersionPicker card={versionCard} list={active} onClose={() => setVersionCard(null)} />
+      )}
+      {storeExportOpen && (
+        <CardTutorExport cards={wishlist} onClose={() => setStoreExportOpen(false)} />
       )}
     </>
   );

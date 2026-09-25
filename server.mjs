@@ -4,6 +4,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchLigaMagicPrice, ligaMagicUrl } from './server/ligamagic-price.mjs';
 import { fetchCommanderTopPicks } from './server/recommander-page.mjs';
+import { cardTutorSearchUrl, resolveCardTutorCard } from './server/cardtutor.mjs';
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), 'dist');
 const port = Number(process.env.PORT ?? 3000);
@@ -13,6 +14,8 @@ const brPriceCache = new Map();
 const BR_PRICE_TTL_MS = 6 * 60 * 60 * 1000;
 const commanderPicksCache = new Map();
 const COMMANDER_PICKS_TTL_MS = 6 * 60 * 60 * 1000;
+const cardTutorCache = new Map();
+const CARDTUTOR_TTL_MS = 6 * 60 * 60 * 1000;
 
 const mime = {
   '.css': 'text/css; charset=utf-8',
@@ -186,6 +189,79 @@ async function brazilPrice(req, res) {
   }
 }
 
+async function readJsonBody(req, maxLength = 256_000) {
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk;
+    if (body.length > maxLength) throw new Error('too_large');
+  }
+  return JSON.parse(body);
+}
+
+async function cachedCardTutorCard(name) {
+  const key = name.trim().toLocaleLowerCase('en');
+  const cached = cardTutorCache.get(key);
+  if (cached && Date.now() - cached.cachedAt < CARDTUTOR_TTL_MS) return cached.result;
+  const result = await resolveCardTutorCard(name, AbortSignal.timeout(15_000));
+  cardTutorCache.set(key, { cachedAt: Date.now(), result });
+  return result;
+}
+
+async function cardTutorResolve(req, res) {
+  if (req.method !== 'POST') {
+    json(res, 405, { message: 'Method not allowed' });
+    return;
+  }
+
+  let requestBody;
+  try {
+    requestBody = await readJsonBody(req);
+  } catch (error) {
+    json(res, error instanceof Error && error.message === 'too_large' ? 413 : 400, {
+      message: 'Invalid request body',
+    });
+    return;
+  }
+  if (!Array.isArray(requestBody.cards) || requestBody.cards.length === 0 || requestBody.cards.length > 60) {
+    json(res, 400, { message: 'Send between 1 and 60 cards.' });
+    return;
+  }
+
+  const cards = requestBody.cards.map((card) => ({
+    oracleId: String(card?.oracleId ?? ''),
+    name: String(card?.name ?? '').trim().slice(0, 180),
+    setCode: String(card?.setCode ?? '').trim().slice(0, 20),
+    collectorNumber: String(card?.collectorNumber ?? '').trim().slice(0, 30),
+  }));
+  if (cards.some((card) => !card.oracleId || !card.name)) {
+    json(res, 400, { message: 'Every card needs an oracleId and name.' });
+    return;
+  }
+
+  const output = [];
+  // Three concurrent lookups keep a normal wishlist responsive without
+  // sending a burst of dozens of requests to the independent store.
+  for (let index = 0; index < cards.length; index += 3) {
+    const batch = cards.slice(index, index + 3);
+    const resolved = await Promise.all(batch.map(async (card) => {
+      try {
+        const result = await cachedCardTutorCard(card.name);
+        return { ...card, ...result };
+      } catch {
+        return {
+          ...card,
+          url: cardTutorSearchUrl(card.name),
+          matched: false,
+          listings: [],
+          error: 'CardTutor unavailable',
+        };
+      }
+    }));
+    output.push(...resolved);
+  }
+  json(res, 200, { cards: output, checkedAt: new Date().toISOString() });
+}
+
 function serveStatic(req, res) {
   const pathname = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
   const relative = normalize(pathname).replace(/^(\.\.[/\\])+/, '').replace(/^[/\\]+/, '');
@@ -212,6 +288,10 @@ createServer((req, res) => {
   }
   if (req.url?.startsWith('/api/prices/br')) {
     void brazilPrice(req, res);
+    return;
+  }
+  if (req.url?.startsWith('/api/stores/cardtutor/resolve')) {
+    void cardTutorResolve(req, res);
     return;
   }
   serveStatic(req, res);

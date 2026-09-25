@@ -15,6 +15,7 @@ almost the entire screen; everything else stays out of the way.
 - **Swipe down** — open filters (format, colors, card types, rarity, theme)
 - **Swipe up** — open your collections (wishlist + owned)
 - **Brazilian market prices** — live lowest LigaMagic marketplace price in BRL
+- **CardTutor buying export** — resolves direct product URLs, checks live stock and prices, copies all links, and downloads the wishlist as CSV
 - **Editable, versioned lists** — add/remove cards, copy exact printings, save and restore snapshots
 - **Hold for a full-card preview** — long-press any list row
 - **Printing picker** — choose a specific set/art from a mobile carousel adapted from the Binder Generator UI
@@ -43,14 +44,12 @@ almost the entire screen; everything else stays out of the way.
 - **Undo**, tap-to-flip double-faced cards, and on-screen buttons as fallbacks
 - **Persistent** — your commander, deck, rejections, and filters survive reloads
 
-### Buying roadmap
+### Buying and store roadmap
 
-The price endpoint and exact-printing data are structured for the next phase:
-store adapters with product URL templates, per-printing availability, and cart
-consolidation that minimizes total price and the number of stores. The first
-version deliberately uses LigaMagic's marketplace aggregate and direct card
-URL; it does not pretend that an FX-converted Scryfall price is a Brazilian
-market quote.
+The first store adapter resolves exact CardTutor product pages, extracts live
+offer details, and exports links or CSV from the wishlist. The next phase adds
+more Brazilian stores, exact-printing matching across them, and cart
+consolidation that minimizes both total price and the number of stores.
 
 Reach it from the **♥ Deck Builder** button in Settings, or navigate to `/swipe`.
 
