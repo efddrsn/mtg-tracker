@@ -20,6 +20,14 @@ export function validateStoreRequest(body, storeId) {
   return { store, cards };
 }
 
+function storeErrorCode(error, signal) {
+  if (signal.aborted) return 'timeout';
+  const message = error instanceof Error ? error.message : String(error);
+  const status = /(?:search|item) HTTP (\\d+)/i.exec(message)?.[1];
+  if (['403', '429'].includes(status)) return 'blocked';
+  return 'store_unavailable';
+}
+
 export function createStoreResolver(lookup = resolveCardTutorCard, timeoutMs = 12_000) {
   const cache = new Map();
   const unavailableUntil = new Map();
@@ -53,10 +61,16 @@ export function createStoreResolver(lookup = resolveCardTutorCard, timeoutMs = 1
           cache.set(key, { result: payload, expires: Date.now() + (payload.status === 'checked' ? 300_000 : 30_000) });
           output[index] = { ...card, ...payload };
         } catch (error) {
-          unavailableUntil.set(store.id, Date.now() + 30_000);
-          output[index] = fallback(card, signal.aborted ? 'timeout' : 'store_unavailable');
-          // Diagnostic code only; never log user card lists or credentials.
-          console.warn('Store lookup failed', store.id, error?.cause?.code ?? error?.name ?? 'Error');
+          const code = storeErrorCode(error, signal);
+          // Cool down this store only after a confirmed upstream failure.
+          // A lookup for one missing card must never disable every other card.
+          if (code === 'blocked' || code === 'timeout' || code === 'store_unavailable') {
+            unavailableUntil.set(store.id, Date.now() + 30_000);
+          }
+          output[index] = fallback(card, code);
+          // Keep diagnostics actionable without logging users' decklists.
+          const reason = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
+          console.warn('Store lookup failed', store.id, code, reason);
         }
       }
     }));
