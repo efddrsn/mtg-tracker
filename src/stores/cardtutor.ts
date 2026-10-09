@@ -120,6 +120,20 @@ export async function fetchCardTutorResults(
       batch.forEach((_, index) => { output[offset + index] = { ...output[offset + index], error: 'store_unavailable' }; });
     }
     onProgress?.([...output]);
+    // A store-wide network/anti-bot failure should not trigger dozens of
+    // identical requests for the rest of a Commander-sized wishlist.
+    const resolvedBatch = output.slice(offset, offset + batch.length);
+    if (resolvedBatch.length > 0 && resolvedBatch.every((row) =>
+      ['blocked', 'store_unavailable', 'timeout'].includes(row.error ?? '')
+    )) {
+      const reason = resolvedBatch.some((row) => row.error === 'blocked')
+        ? 'blocked' : 'store_unavailable';
+      for (let index = offset + batch.length; index < output.length; index++) {
+        output[index] = { ...output[index], error: reason };
+      }
+      onProgress?.([...output]);
+      break;
+    }
   }
   return output;
 }
