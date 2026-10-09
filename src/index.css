@@ -1388,6 +1388,11 @@ input, button, select, textarea {
   border-top-color: #b9dc9c; border-radius: 50%; animation: spin .7s linear infinite;
 }
 .store-export-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.store-export-stores { display: flex; gap: 6px; margin-bottom: 14px; }
+.store-export-stores button { flex: 1; padding: 10px 5px; border: 1px solid #36483e; border-radius: 10px; color: #b9dc9c; background: #18231f; }
+.store-export-stores button[aria-pressed="true"] { background: #b9dc9c; color: #0d1513; }
+.store-export-actions button:disabled { opacity: .5; }
+.store-export-panel textarea { width: 100%; margin-bottom: 12px; padding: 8px; background: #18231f; color: #dff4ce; }
 .store-export-actions button {
   padding: 11px; border: 1px solid rgba(185,220,156,.28); border-radius: 12px;
   background: #18231f; color: #dff4ce; font-size: 12px; font-weight: 800;

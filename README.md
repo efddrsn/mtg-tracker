@@ -46,6 +46,19 @@ almost the entire screen; everything else stays out of the way.
 
 ### Buying and store roadmap
 
+Wishlist → **Links de compra** supports **CardTutor, Mox Vault and Epic One**.
+Links and CSV are immediately available, including lists over 60 cards. Select
+a store and optionally check prices/stock in batches of three; failures preserve
+every card and its exact-search URL. Unknown stock is exported as `unknown`,
+not out of stock. Store anti-bot challenges are not bypassed: open the link in
+your browser to verify those offers. The CSV separates the requested printing
+from the cheapest available offer; exact-printing equivalence is not guaranteed.
+API: `POST /api/stores/{cardtutor|moxvault|epicone}/resolve`, `{cards:[{name,oracleId,setCode,collectorNumber}]}`.
+Legacy batches up to 500 are accepted with a 12-second overall lookup deadline;
+the UI uses three-card batches to avoid proxy timeouts. Cache lifetime: 5 minutes
+for parsed offers, 30 seconds for unverified responses. For local development,
+run `npm start` (port 3000) alongside `npm run dev` for the API proxy.
+
 The first store adapter resolves exact CardTutor product pages, extracts live
 offer details, and exports links or CSV from the wishlist. The next phase adds
 more Brazilian stores, exact-printing matching across them, and cart

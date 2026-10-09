@@ -1,106 +1,109 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { SavedCard } from '../deck/deckStore';
-import {
-  availableListings,
-  cardTutorCsv,
-  fetchCardTutorResults,
-  lowestAvailablePrice,
-  type CardTutorResult,
-} from '../stores/cardtutor';
+import { STORES, initialStoreResults, availableListings, cardTutorCsv,
+  fetchCardTutorResults, lowestAvailablePrice, type StoreId, type CardTutorResult } from '../stores/cardtutor';
 
-interface CardTutorExportProps {
-  cards: SavedCard[];
-  onClose: () => void;
-}
-
-function brl(value: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-}
-
-function downloadCsv(results: CardTutorResult[]) {
-  const blob = new Blob([`\uFEFF${cardTutorCsv(results)}`], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
+function downloadCsv(results: CardTutorResult[], storeId: string) {
+  const url = URL.createObjectURL(new Blob([`\uFEFF${cardTutorCsv(results)}`], { type: 'text/csv;charset=utf-8' }));
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = 'wishlist-cardtutor.csv';
+  anchor.download = `wishlist-${storeId}.csv`;
+  document.body.appendChild(anchor);
   anchor.click();
-  URL.revokeObjectURL(url);
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function CardTutorExport({ cards, onClose }: CardTutorExportProps) {
-  const [results, setResults] = useState<CardTutorResult[]>([]);
-  const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
+function StorePanel({ cards, storeId }: { cards: SavedCard[]; storeId: StoreId }) {
+  const [results, setResults] = useState(() => initialStoreResults(cards, storeId));
+  const [running, setRunning] = useState(false);
+  const [message, setMessage] = useState('');
+  const [manualCopy, setManualCopy] = useState(false);
+  const controller = useRef<AbortController | null>(null);
+  useEffect(() => () => controller.current?.abort(), []);
+  const urls = results.map((result) => result.url).join('\n');
+  const checked = results.filter((result) => result.status === 'checked').length;
 
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchCardTutorResults(cards, controller.signal)
-      .then(setResults)
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) {
-          setError(reason instanceof Error ? reason.message : 'Não foi possível consultar o CardTutor.');
-        }
-      });
-    return () => controller.abort();
-  }, [cards]);
-
-  const ready = results.length === cards.length;
-  const urls = useMemo(() => results.map((result) => result.url).join('\n'), [results]);
-
-  const copyUrls = () => {
-    navigator.clipboard?.writeText(urls).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
-    }).catch(() => {});
+  const consult = async () => {
+    controller.current?.abort();
+    const current = new AbortController();
+    controller.current = current;
+    setRunning(true);
+    setMessage('');
+    try {
+      await fetchCardTutorResults(cards, current.signal, storeId, setResults);
+    } catch {
+      if (!current.signal.aborted) setMessage('Consulta interrompida. Os links continuam disponíveis.');
+    } finally {
+      if (!current.signal.aborted) setRunning(false);
+    }
   };
 
-  return (
-    <div className="store-export" role="dialog" aria-modal="true" aria-label="Links do CardTutor">
-      <button type="button" className="store-export-scrim" onClick={onClose} aria-label="Fechar" />
-      <section className="store-export-panel">
-        <header className="store-export-header">
-          <div>
-            <small>COMPRAR WISHLIST</small>
-            <h2>Links do CardTutor</h2>
-          </div>
-          <button type="button" className="version-close" onClick={onClose} aria-label="Fechar">×</button>
-        </header>
+  const copyUrls = async () => {
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard indisponível');
+      await navigator.clipboard.writeText(urls);
+      setMessage('Links copiados!');
+    } catch {
+      setManualCopy(true);
+      setMessage('Selecione e copie os links abaixo.');
+    }
+  };
 
-        {error ? <div className="store-export-status">{error}</div> : !ready ? (
-          <div className="store-export-status"><span className="spinner" />Buscando cartas e ofertas…</div>
-        ) : (
-          <>
-            <div className="store-export-actions">
-              <button type="button" onClick={copyUrls}>{copied ? 'Copiado!' : 'Copiar URLs'}</button>
-              <button type="button" onClick={() => downloadCsv(results)}>Exportar CSV</button>
-            </div>
-            <p className="store-export-note">
-              O link abre todas as versões da carta. O CSV usa a oferta disponível mais barata.
-            </p>
-            <div className="store-export-list">
-              {results.map((result) => {
-                const offers = availableListings(result);
-                const price = lowestAvailablePrice(result);
-                return (
-                  <article key={result.oracleId} className="store-export-row">
-                    <div>
-                      <b>{result.name}</b>
-                      <span>
-                        {result.setCode ? `${result.setCode.toUpperCase()} #${result.collectorNumber} · ` : ''}
-                        {offers.length > 0
-                          ? `${offers.length} oferta${offers.length === 1 ? '' : 's'} em estoque`
-                          : result.matched ? 'Sem estoque' : 'Busca no CardTutor'}
-                      </span>
-                    </div>
-                    {price != null && <strong>{brl(price)}</strong>}
-                    <a href={result.url} target="_blank" rel="noreferrer">Abrir</a>
-                  </article>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </section>
+  return <>
+    <div className="store-export-actions">
+      <button type="button" onClick={copyUrls} disabled={!cards.length}>Copiar URLs</button>
+      <button type="button" onClick={() => downloadCsv(results, storeId)} disabled={!cards.length}>Exportar CSV</button>
+      <button type="button" onClick={consult} disabled={running || !cards.length}>Consultar preço e estoque</button>
+      {running && <button type="button" onClick={() => { controller.current?.abort(); setRunning(false); }}>Parar consulta</button>}
     </div>
-  );
+    <p className="store-export-note">
+      Links prontos para todas as cartas. Busca exata quando o produto ainda não foi confirmado.
+      Preços consultados são da oferta disponível mais barata, não necessariamente da versão escolhida. Frete não incluído.
+    </p>
+    <p className="store-export-note" role="status">
+      {running ? `Consultando… ${checked}/${cards.length} cartas com ofertas verificadas.`
+        : `${checked}/${cards.length} cartas com ofertas verificadas. Estoque desconhecido não significa esgotado.`}
+      {message && ` ${message}`}
+    </p>
+    {manualCopy && <textarea aria-label="URLs para copiar" value={urls} readOnly rows={6} onFocus={(event) => event.target.select()} />}
+    <div className="store-export-list">
+      {results.map((result, index) => {
+        const offers = availableListings(result);
+        const price = lowestAvailablePrice(result);
+        return <article key={`${result.oracleId}-${index}`} className="store-export-row">
+          <div>
+            <b>{result.name}</b>
+            <span>{result.setCode ? `${result.setCode.toUpperCase()} #${result.collectorNumber} · ` : ''}
+              {offers.length ? `${offers.length} ofertas em estoque`
+                : result.status === 'checked' ? 'Sem estoque nas ofertas consultadas'
+                  : result.error ? 'Consulta indisponível · abrir na loja' : 'Preço/estoque não verificados'}
+            </span>
+          </div>
+          {price != null && <strong>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price)}</strong>}
+          <a href={result.url} target="_blank" rel="noreferrer">{result.matched ? 'Produto' : 'Buscar'}</a>
+        </article>;
+      })}
+    </div>
+  </>;
+}
+
+export function CardTutorExport({ cards, onClose }: { cards: SavedCard[]; onClose: () => void }) {
+  const [storeId, setStoreId] = useState<StoreId>('cardtutor');
+  // Freeze this export's snapshot so background changes cannot restart requests.
+  const [snapshot] = useState(() => [...cards]);
+  return <div className="store-export" role="dialog" aria-modal="true" aria-label="Links de compra">
+    <button type="button" className="store-export-scrim" onClick={onClose} aria-label="Fechar" />
+    <section className="store-export-panel">
+      <header className="store-export-header">
+        <div><small>COMPRAR WISHLIST</small><h2>Links de compra</h2></div>
+        <button type="button" className="version-close" onClick={onClose} aria-label="Fechar">×</button>
+      </header>
+      <div className="store-export-stores" role="group" aria-label="Loja">
+        {STORES.map((store) => <button key={store.id} type="button" aria-pressed={storeId === store.id}
+          onClick={() => setStoreId(store.id as StoreId)}>{store.name}</button>)}
+      </div>
+      <StorePanel key={storeId} cards={snapshot} storeId={storeId} />
+    </section>
+  </div>;
 }

@@ -4,7 +4,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchLigaMagicPrice, ligaMagicUrl } from './server/ligamagic-price.mjs';
 import { fetchCommanderTopPicks } from './server/recommander-page.mjs';
-import { cardTutorSearchUrl, resolveCardTutorCard } from './server/cardtutor.mjs';
+import { createStoreResolver, validateStoreRequest } from './server/stores.mjs';
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), 'dist');
 const port = Number(process.env.PORT ?? 3000);
@@ -14,8 +14,6 @@ const brPriceCache = new Map();
 const BR_PRICE_TTL_MS = 6 * 60 * 60 * 1000;
 const commanderPicksCache = new Map();
 const COMMANDER_PICKS_TTL_MS = 6 * 60 * 60 * 1000;
-const cardTutorCache = new Map();
-const CARDTUTOR_TTL_MS = 6 * 60 * 60 * 1000;
 
 const mime = {
   '.css': 'text/css; charset=utf-8',
@@ -198,68 +196,24 @@ async function readJsonBody(req, maxLength = 256_000) {
   return JSON.parse(body);
 }
 
-async function cachedCardTutorCard(name) {
-  const key = name.trim().toLocaleLowerCase('en');
-  const cached = cardTutorCache.get(key);
-  if (cached && Date.now() - cached.cachedAt < CARDTUTOR_TTL_MS) return cached.result;
-  const result = await resolveCardTutorCard(name, AbortSignal.timeout(15_000));
-  cardTutorCache.set(key, { cachedAt: Date.now(), result });
-  return result;
-}
+const resolveStoreCards = createStoreResolver();
 
-async function cardTutorResolve(req, res) {
+async function cardTutorResolve(req, res, storeId = 'cardtutor') {
   if (req.method !== 'POST') {
     json(res, 405, { message: 'Method not allowed' });
     return;
   }
-
-  let requestBody;
+  let input;
   try {
-    requestBody = await readJsonBody(req);
+    input = validateStoreRequest(await readJsonBody(req), storeId);
   } catch (error) {
-    json(res, error instanceof Error && error.message === 'too_large' ? 413 : 400, {
-      message: 'Invalid request body',
+    json(res, error.message === 'too_large' ? 413 : 400, {
+      message: error instanceof SyntaxError ? 'JSON inválido.' : error.message,
     });
     return;
   }
-  if (!Array.isArray(requestBody.cards) || requestBody.cards.length === 0 || requestBody.cards.length > 60) {
-    json(res, 400, { message: 'Send between 1 and 60 cards.' });
-    return;
-  }
-
-  const cards = requestBody.cards.map((card) => ({
-    oracleId: String(card?.oracleId ?? ''),
-    name: String(card?.name ?? '').trim().slice(0, 180),
-    setCode: String(card?.setCode ?? '').trim().slice(0, 20),
-    collectorNumber: String(card?.collectorNumber ?? '').trim().slice(0, 30),
-  }));
-  if (cards.some((card) => !card.oracleId || !card.name)) {
-    json(res, 400, { message: 'Every card needs an oracleId and name.' });
-    return;
-  }
-
-  const output = [];
-  // Three concurrent lookups keep a normal wishlist responsive without
-  // sending a burst of dozens of requests to the independent store.
-  for (let index = 0; index < cards.length; index += 3) {
-    const batch = cards.slice(index, index + 3);
-    const resolved = await Promise.all(batch.map(async (card) => {
-      try {
-        const result = await cachedCardTutorCard(card.name);
-        return { ...card, ...result };
-      } catch {
-        return {
-          ...card,
-          url: cardTutorSearchUrl(card.name),
-          matched: false,
-          listings: [],
-          error: 'CardTutor unavailable',
-        };
-      }
-    }));
-    output.push(...resolved);
-  }
-  json(res, 200, { cards: output, checkedAt: new Date().toISOString() });
+  const cards = await resolveStoreCards(input.store, input.cards);
+  json(res, 200, { cards, checkedAt: new Date().toISOString() });
 }
 
 function serveStatic(req, res) {
@@ -290,8 +244,9 @@ createServer((req, res) => {
     void brazilPrice(req, res);
     return;
   }
-  if (req.url?.startsWith('/api/stores/cardtutor/resolve')) {
-    void cardTutorResolve(req, res);
+  const storeRoute = /^\/api\/stores\/([a-z]+)\/resolve$/.exec(new URL(req.url ?? '/', 'http://localhost').pathname);
+  if (storeRoute) {
+    void cardTutorResolve(req, res, storeRoute[1]);
     return;
   }
   serveStatic(req, res);
