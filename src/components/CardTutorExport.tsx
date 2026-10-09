@@ -23,6 +23,8 @@ function StorePanel({ cards, storeId }: { cards: SavedCard[]; storeId: StoreId }
   useEffect(() => () => controller.current?.abort(), []);
   const urls = results.map((result) => result.url).join('\n');
   const checked = results.filter((result) => result.status === 'checked').length;
+  const blocked = results.some((result) => result.error === 'blocked');
+  const unavailable = results.some((result) => result.error === 'store_unavailable' || result.error === 'timeout');
 
   const consult = async () => {
     controller.current?.abort();
@@ -62,8 +64,10 @@ function StorePanel({ cards, storeId }: { cards: SavedCard[]; storeId: StoreId }
       Preços consultados são da oferta disponível mais barata, não necessariamente da versão escolhida. Frete não incluído.
     </p>
     <p className="store-export-note" role="status">
-      {running ? `Consultando… ${checked}/${cards.length} cartas com ofertas verificadas.`
-        : `${checked}/${cards.length} cartas com ofertas verificadas. Estoque desconhecido não significa esgotado.`}
+      {running ? `Consultando… ${checked}/${cards.length} cartas verificadas.`
+        : blocked ? 'A loja bloqueou a consulta automática. Os links individuais de busca funcionam no navegador; preços e estoques não foram verificados.'
+          : unavailable ? 'Não foi possível consultar a loja agora. Os links de compra continuam disponíveis, mas o estoque não foi verificado.'
+            : `${checked}/${cards.length} cartas com ofertas verificadas. Estoque desconhecido não significa esgotado.`}
       {message && ` ${message}`}
     </p>
     {manualCopy && <textarea aria-label="URLs para copiar" value={urls} readOnly rows={6} onFocus={(event) => event.target.select()} />}
@@ -77,7 +81,8 @@ function StorePanel({ cards, storeId }: { cards: SavedCard[]; storeId: StoreId }
             <span>{result.setCode ? `${result.setCode.toUpperCase()} #${result.collectorNumber} · ` : ''}
               {offers.length ? `${offers.length} ofertas em estoque`
                 : result.status === 'checked' ? 'Sem estoque nas ofertas consultadas'
-                  : result.error ? 'Consulta indisponível · abrir na loja' : 'Preço/estoque não verificados'}
+                  : result.error === 'blocked' ? 'Verificação bloqueada pela loja · abrir link'
+                    : result.error ? 'Estoque não verificado · abrir link' : 'Preço/estoque não verificados'}
             </span>
           </div>
           {price != null && <strong>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price)}</strong>}
