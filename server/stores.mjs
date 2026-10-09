@@ -23,7 +23,7 @@ export function validateStoreRequest(body, storeId) {
 function storeErrorCode(error, signal) {
   if (signal.aborted) return 'timeout';
   const message = error instanceof Error ? error.message : String(error);
-  const status = /(?:search|item) HTTP (\\d+)/i.exec(message)?.[1];
+  const status = /HTTP ([0-9]{3})/i.exec(message)?.[1];
   if (['403', '429'].includes(status)) return 'blocked';
   return 'store_unavailable';
 }
