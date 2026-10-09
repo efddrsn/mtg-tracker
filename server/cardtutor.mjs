@@ -96,9 +96,10 @@ export function parseCardTutorListings(html) {
 }
 
 const requestHeaders = {
-  Accept: 'text/html,application/xhtml+xml',
-  'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.7',
-  'User-Agent': 'Mozilla/5.0 (compatible; MTGWishlist/1.0; +https://github.com/efddrsn/mtg-tracker)',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+  // Use a standard browser User-Agent rather than announcing an automated crawler.
+  'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
 };
 
 export async function resolveCardTutorCard(name, signal, origin = CARDTUTOR_ORIGIN) {
@@ -108,10 +109,16 @@ export async function resolveCardTutorCard(name, signal, origin = CARDTUTOR_ORIG
   const searchHtml = await searchResponse.text();
   const redirected = new URL(searchResponse.url);
   const redirectedRefid = redirected.searchParams.get('refid');
-  if (redirected.origin === new URL(origin).origin && redirected.searchParams.get('view') === 'ecom/item' && redirectedRefid) {
+  // Epic One moved product pages from epicgame.com.br to epicone.com.br.
+  // Trust only the selected store's own host or its known canonical alias.
+  const originalHostname = new URL(origin).hostname;
+  const sameStore = redirected.origin === new URL(origin).origin
+    || (originalHostname === 'www.epicgame.com.br'
+      && ['www.epicone.com.br', 'epicone.com.br'].includes(redirected.hostname));
+  if (sameStore && redirected.searchParams.get('view') === 'ecom/item' && redirectedRefid) {
     return {
       name,
-      url: `${origin}?view=ecom/item&refid=${encodeURIComponent(redirectedRefid)}`,
+      url: `${redirected.origin}/?view=ecom/item&refid=${encodeURIComponent(redirectedRefid)}`,
       matched: true,
       listings: parseCardTutorListings(searchHtml),
     };
