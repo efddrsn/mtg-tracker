@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   cardTutorSearchUrl,
   parseCardTutorListings,
   parseCardTutorSearch,
+  resolveCardTutorCard,
 } from './cardtutor.mjs';
 
 describe('CardTutor adapter', () => {
@@ -22,6 +23,21 @@ describe('CardTutor adapter', () => {
       refid: 'exact-ref',
       url: 'https://www.cardtutor.com.br/?view=ecom/item&refid=exact-ref',
     });
+  });
+
+  it('accepts Epic One redirect to its official epicone.com.br domain', async () => {
+    const origin = 'https://www.epicgame.com.br/';
+    const finalUrl = 'https://www.epicone.com.br/?view=ecom/item&refid=abc123';
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, url: finalUrl, text: async () => '<main>Sol Ring</main>',
+    })));
+    try {
+      const result = await resolveCardTutorCard('Sol Ring', undefined, origin);
+      expect(result).toMatchObject({ name: 'Sol Ring', matched: true, url: finalUrl });
+      expect(result.listings).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('extracts edition, condition, extras, stock, and BRL price', () => {
