@@ -27,6 +27,15 @@ describe('multi-store resolution', () => {
     expect(new URL(result[0].url).hostname).toBe('www.epicgame.com.br');
     expect(result).toHaveLength(1);
   });
+  it('reports a store HTTP 403 as blocked, preserving a working search URL', async () => {
+    const lookup = vi.fn().mockRejectedValue(new Error('CardTutor search HTTP 403'));
+    const { store, cards } = validateStoreRequest({ cards: [{ name: 'Sol Ring' }] }, 'cardtutor');
+    const [result] = await createStoreResolver(lookup)(store, cards);
+    expect(result.status).toBe('unverified');
+    expect(result.error).toBe('blocked');
+    expect(result.url).toContain('searchExactMatch=1');
+  });
+
   it('bounds legacy large requests to one deadline and at most 3 concurrent calls', async () => {
     let active = 0;
     let maximum = 0;
