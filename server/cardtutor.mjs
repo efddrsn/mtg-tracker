@@ -2,7 +2,7 @@ const CARDTUTOR_ORIGIN = 'https://www.cardtutor.com.br/';
 
 function decodeHtml(value) {
   const named = {
-    aacute: 'á', acirc: 'â', atilde: 'ã', ccedil: 'ç', eacute: 'é', ecirc: 'ê',
+    agrave: 'à', aacute: 'á', acirc: 'â', atilde: 'ã', ccedil: 'ç', eacute: 'é', ecirc: 'ê',
     iacute: 'í', oacute: 'ó', ocirc: 'ô', otilde: 'õ', uacute: 'ú', uuml: 'ü',
   };
   return String(value ?? '')
@@ -40,8 +40,8 @@ function brlNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function cardTutorSearchUrl(name) {
-  const url = new URL(CARDTUTOR_ORIGIN);
+export function cardTutorSearchUrl(name, origin = CARDTUTOR_ORIGIN) {
+  const url = new URL(origin);
   url.searchParams.set('view', 'ecom/itens');
   // CardTutor redirects an exact match straight to its stable refid product
   // page. The URL therefore remains useful even if our server cannot resolve
@@ -52,7 +52,7 @@ export function cardTutorSearchUrl(name) {
   return url.toString();
 }
 
-export function parseCardTutorSearch(html, requestedName) {
+export function parseCardTutorSearch(html, requestedName, origin = CARDTUTOR_ORIGIN) {
   const wanted = comparableName(requestedName);
   const pattern = /<div\s+class=["']title["']>\s*<a\s+href=["']([^"']*\brefid=([^&"']+)[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
   for (const match of html.matchAll(pattern)) {
@@ -62,7 +62,7 @@ export function parseCardTutorSearch(html, requestedName) {
     return {
       name,
       refid,
-      url: `${CARDTUTOR_ORIGIN}?view=ecom/item&refid=${encodeURIComponent(refid)}`,
+      url: `${origin}?view=ecom/item&refid=${encodeURIComponent(refid)}`,
     };
   }
   return null;
@@ -76,7 +76,9 @@ export function parseCardTutorListings(html) {
     const edition = /\btitle=["']([^"']*)["']/i.exec(editionImage)?.[1]
       ?? /<div\s+class=["']tooltip["']>([^<]+)<\/div>/i.exec(chunk)?.[1];
     const language = /<img\s+alt=["']([^"']+)["'][^>]*\b(?:bandeiras|flags)\//i.exec(chunk)?.[1];
-    const quality = /class=["'][^"']*\bquality\b[^"']*["'][^>]*>[\s\S]*?<div[^>]*>[^<]*<\/div>\s*([^<\s][^<]*)/i.exec(chunk)?.[1];
+    const qualityCell = chunk.split(/<div\s+class=["']table-cards-body-cell\b/i)
+      .find((cell) => /^[^>]*\bquality\b/.test(cell)) ?? '';
+    const quality = /<div[^>]*>[^<]*<\/div>\s*([\s\S]*?)(?=<div|$)/i.exec(qualityCell)?.[1];
     const extras = /class=["'][^"']*\bcard-extras\b[^"']*["'][^>]*>[\s\S]*?<span[^>]*>([\s\S]*?)<\/span>/i.exec(chunk)?.[1];
     const stockText = /<div\s+class=["']title-mobile["']>Estoque<\/div>\s*([\d.,]+)\s*unid/i.exec(chunk)?.[1];
     const priceText = /class=["'][^"']*\bcard-preco\b[^"']*["'][^>]*>[\s\S]*?R\$\s*([\d.,]+)/i.exec(chunk)?.[1];
@@ -87,7 +89,7 @@ export function parseCardTutorListings(html) {
       language: textContent(language),
       quality: textContent(quality),
       extras: textContent(extras),
-      stock: Number.parseInt(stockText ?? '0', 10) || 0,
+      stock: stockText == null ? null : Number.parseInt(stockText.replace(/[.,]/g, ''), 10),
       price: brlNumber(priceText),
     }];
   });
@@ -99,31 +101,31 @@ const requestHeaders = {
   'User-Agent': 'Mozilla/5.0 (compatible; MTGWishlist/1.0; +https://github.com/efddrsn/mtg-tracker)',
 };
 
-export async function resolveCardTutorCard(name, signal) {
-  const searchUrl = cardTutorSearchUrl(name);
+export async function resolveCardTutorCard(name, signal, origin = CARDTUTOR_ORIGIN) {
+  const searchUrl = cardTutorSearchUrl(name, origin);
   const searchResponse = await fetch(searchUrl, { headers: requestHeaders, signal });
   if (!searchResponse.ok) throw new Error(`CardTutor search HTTP ${searchResponse.status}`);
   const searchHtml = await searchResponse.text();
   const redirected = new URL(searchResponse.url);
   const redirectedRefid = redirected.searchParams.get('refid');
-  if (redirected.searchParams.get('view') === 'ecom/item' && redirectedRefid) {
+  if (redirected.origin === new URL(origin).origin && redirected.searchParams.get('view') === 'ecom/item' && redirectedRefid) {
     return {
       name,
-      url: `${CARDTUTOR_ORIGIN}?view=ecom/item&refid=${encodeURIComponent(redirectedRefid)}`,
+      url: `${origin}?view=ecom/item&refid=${encodeURIComponent(redirectedRefid)}`,
       matched: true,
       listings: parseCardTutorListings(searchHtml),
     };
   }
 
-  const product = parseCardTutorSearch(searchHtml, name);
+  const product = parseCardTutorSearch(searchHtml, name, origin);
   if (!product) return { name, url: searchUrl, matched: false, listings: [] };
 
-  const itemResponse = await fetch(product.url, { headers: requestHeaders, signal });
-  if (!itemResponse.ok) throw new Error(`CardTutor item HTTP ${itemResponse.status}`);
-  return {
-    name,
-    url: product.url,
-    matched: true,
-    listings: parseCardTutorListings(await itemResponse.text()),
-  };
+  try {
+    const itemResponse = await fetch(product.url, { headers: requestHeaders, signal });
+    if (!itemResponse.ok) throw new Error(`Store item HTTP ${itemResponse.status}`);
+    return { name, url: product.url, matched: true, listings: parseCardTutorListings(await itemResponse.text()) };
+  } catch {
+    // Preserve a resolved product URL even if the offer lookup fails.
+    return { name, url: product.url, matched: true, listings: [], error: 'offers_unavailable' };
+  }
 }

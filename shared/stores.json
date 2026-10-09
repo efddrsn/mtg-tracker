@@ -1,0 +1,5 @@
+[
+  { "id": "cardtutor", "name": "CardTutor", "origin": "https://www.cardtutor.com.br/" },
+  { "id": "moxvault", "name": "Mox Vault", "origin": "https://www.moxvault.com.br/" },
+  { "id": "epicone", "name": "Epic One", "origin": "https://www.epicgame.com.br/" }
+]
