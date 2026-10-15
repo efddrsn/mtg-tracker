@@ -47,3 +47,17 @@ describe('resilient store exports', () => {
     expect(csv).toContain('not_verified');
   });
 });
+
+it('sends manually added stores to the custom API and keeps their search links', async () => {
+  const store = { id: 'custom-123', name: 'My Shop', origin: 'https://shop.com.br/' };
+  const fetchMock = vi.fn(async (url, init) => {
+    expect(url).toBe('/api/stores/custom/resolve');
+    const body = JSON.parse(init.body);
+    expect(body.store).toEqual(store);
+    return new Response(JSON.stringify({ cards: body.cards.map((card: SavedCard) => ({ ...card, listings: [], status: 'unverified' })) }));
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const result = await fetchCardTutorResults(cards.slice(0, 1), undefined, store.id, undefined, store);
+  expect(result[0].storeName).toBe('My Shop');
+  expect(result[0].url).toContain('https://shop.com.br/');
+});

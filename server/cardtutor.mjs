@@ -1,3 +1,4 @@
+import { storeFetch } from './store-network.mjs';
 const CARDTUTOR_ORIGIN = 'https://www.cardtutor.com.br/';
 
 function decodeHtml(value) {
@@ -102,9 +103,9 @@ const requestHeaders = {
   'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
 };
 
-export async function resolveCardTutorCard(name, signal, origin = CARDTUTOR_ORIGIN) {
+export async function resolveCardTutorCard(name, signal, origin = CARDTUTOR_ORIGIN, load = storeFetch) {
   const searchUrl = cardTutorSearchUrl(name, origin);
-  const searchResponse = await fetch(searchUrl, { headers: requestHeaders, signal });
+  const searchResponse = await load(searchUrl, { headers: requestHeaders, signal });
   if (!searchResponse.ok) throw new Error(`CardTutor search HTTP ${searchResponse.status}`);
   const searchHtml = await searchResponse.text();
   const redirected = new URL(searchResponse.url);
@@ -128,7 +129,7 @@ export async function resolveCardTutorCard(name, signal, origin = CARDTUTOR_ORIG
   if (!product) return { name, url: searchUrl, matched: false, listings: [] };
 
   try {
-    const itemResponse = await fetch(product.url, { headers: requestHeaders, signal });
+    const itemResponse = await load(product.url, { headers: requestHeaders, signal });
     if (!itemResponse.ok) throw new Error(`Store item HTTP ${itemResponse.status}`);
     return { name, url: product.url, matched: true, listings: parseCardTutorListings(await itemResponse.text()) };
   } catch {

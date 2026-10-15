@@ -1,8 +1,10 @@
 import stores from '../shared/stores.json' with { type: 'json' };
-import { cardTutorSearchUrl, resolveCardTutorCard } from './cardtutor.mjs';
+import { cardTutorSearchUrl } from './cardtutor.mjs';
+
+import { createResilientLookup } from './store-fallback.mjs';
 
 export function validateStoreRequest(body, storeId) {
-  const store = stores.find((entry) => entry.id === storeId);
+  const store = stores.find((entry) => entry.id === storeId) ?? (storeId === 'custom' ? validateCustomStore(body?.store) : null);
   if (!store) throw new Error('Loja inválida.');
   if (!Array.isArray(body?.cards) || body.cards.length < 1 || body.cards.length > 500) {
     throw new Error('Envie entre 1 e 500 cartas por consulta.');
@@ -28,7 +30,7 @@ function storeErrorCode(error, signal) {
   return 'store_unavailable';
 }
 
-export function createStoreResolver(lookup = resolveCardTutorCard, timeoutMs = 12_000) {
+export function createStoreResolver(lookup = createResilientLookup(), timeoutMs = 90_000) {
   const cache = new Map();
   const unavailableUntil = new Map();
   return async function resolve(store, cards) {
@@ -42,14 +44,14 @@ export function createStoreResolver(lookup = resolveCardTutorCard, timeoutMs = 1
       while (next < cards.length) {
         const index = next++;
         const card = cards[index];
-        const key = `${store.id}|${card.name.toLowerCase()}`;
+        const key = `${store.origin}|${card.name.toLowerCase()}`;
         const cached = cache.get(key);
         if (cached && cached.expires > Date.now()) {
           output[index] = { ...card, ...cached.result };
           continue;
         }
         if (signal.aborted) { output[index] = fallback(card, 'timeout'); continue; }
-        if ((unavailableUntil.get(store.id) ?? 0) > Date.now()) {
+        if ((unavailableUntil.get(store.origin) ?? 0) > Date.now()) {
           output[index] = fallback(card, 'store_unavailable'); continue;
         }
         try {
@@ -65,7 +67,7 @@ export function createStoreResolver(lookup = resolveCardTutorCard, timeoutMs = 1
           // Cool down this store only after a confirmed upstream failure.
           // A lookup for one missing card must never disable every other card.
           if (code === 'blocked' || code === 'timeout' || code === 'store_unavailable') {
-            unavailableUntil.set(store.id, Date.now() + 30_000);
+            unavailableUntil.set(store.origin, Date.now() + 30_000);
           }
           output[index] = fallback(card, code);
           // Keep diagnostics actionable without logging users' decklists.
@@ -76,4 +78,12 @@ export function createStoreResolver(lookup = resolveCardTutorCard, timeoutMs = 1
     }));
     return output;
   };
+}
+
+export function validateCustomStore(input) {
+  if (typeof input?.name !== 'string' || !input.name.trim() || input.name.length > 60) throw new Error('Nome de loja inválido.');
+  const url = new URL(input.origin);
+  if (url.protocol !== 'https:' || url.username || url.password || url.port
+    || !/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i.test(url.hostname)) throw new Error('Use o endereço HTTPS público da loja.');
+  return { id: 'custom', name: input.name.trim(), origin: url.origin + '/' };
 }

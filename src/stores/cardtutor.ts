@@ -1,7 +1,25 @@
 import type { SavedCard } from '../deck/deckStore';
 import stores from '../../shared/stores.json';
 export const STORES = stores;
-export type StoreId = 'cardtutor' | 'moxvault' | 'epicone';
+export type StoreId = string;
+export interface StoreDefinition { id: string; name: string; origin: string; }
+const CUSTOM_STORES_KEY = 'mtg-custom-stores';
+export function loadCustomStores(): StoreDefinition[] {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(CUSTOM_STORES_KEY) ?? '[]');
+    return Array.isArray(saved) ? saved.filter((store): store is StoreDefinition =>
+      typeof store?.id === 'string' && store.id.startsWith('custom-') && typeof store.name === 'string'
+      && typeof store.origin === 'string' && /^https:\/\//.test(store.origin)) : [];
+  } catch { return []; }
+}
+export function saveCustomStores(stores: StoreDefinition[]) {
+  localStorage.setItem(CUSTOM_STORES_KEY, JSON.stringify(stores));
+}
+function selectedStore(storeId: string, custom?: StoreDefinition) {
+  const store = custom ?? STORES.find((entry) => entry.id === storeId);
+  if (!store) throw new Error('Loja inválida.');
+  return store;
+}
 
 export interface CardTutorListing {
   editionId: string;
@@ -26,6 +44,7 @@ export interface CardTutorResult {
   storeName?: string;
   status?: 'checked' | 'unverified';
   checkedAt?: string;
+  method?: 'direct' | 'browser' | 'firecrawl';
 }
 
 export function availableListings(result: CardTutorResult) {
@@ -73,8 +92,8 @@ export function cardTutorCsv(results: CardTutorResult[]) {
   return rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
 }
 
-export function initialStoreResults(cards: SavedCard[], storeId: StoreId): CardTutorResult[] {
-  const store = STORES.find((entry) => entry.id === storeId)!;
+export function initialStoreResults(cards: SavedCard[], storeId: StoreId, custom?: StoreDefinition): CardTutorResult[] {
+  const store = selectedStore(storeId, custom);
   return cards.map((card) => {
     const url = new URL(store.origin);
     url.searchParams.set('view', 'ecom/itens');
@@ -90,18 +109,20 @@ export function initialStoreResults(cards: SavedCard[], storeId: StoreId): CardT
 export async function fetchCardTutorResults(
   cards: SavedCard[], signal?: AbortSignal, storeId: StoreId = 'cardtutor',
   onProgress?: (results: CardTutorResult[]) => void,
+  custom?: StoreDefinition,
 ) {
-  const output = initialStoreResults(cards, storeId);
+  const output = initialStoreResults(cards, storeId, custom);
   // Small requests avoid both the old 60-card rejection and proxy timeouts.
   // Preserve one output row per input, even when a whole batch fails.
   for (let offset = 0; offset < cards.length; offset += 3) {
     signal?.throwIfAborted();
     const batch = cards.slice(offset, offset + 3);
+    let confirmedResponse = false;
     try {
-      const timeout = AbortSignal.timeout(18_000);
-      const response = await fetch(`/api/stores/${storeId}/resolve`, {
+      const timeout = AbortSignal.timeout(95_000);
+      const response = await fetch(`/api/stores/${custom ? 'custom' : storeId}/resolve`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cards: batch.map((card) => ({
+        body: JSON.stringify({ ...(custom ? { store: custom } : {}), cards: batch.map((card) => ({
           oracleId: card.oracleId, name: card.name,
           setCode: card.setCode, collectorNumber: card.collectorNumber,
         })) }),
@@ -110,6 +131,7 @@ export async function fetchCardTutorResults(
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const body = await response.json();
       if (!Array.isArray(body.cards)) throw new Error('Resposta inválida');
+      confirmedResponse = true;
       batch.forEach((card, index) => {
         const result = body.cards.find((entry: CardTutorResult) => entry.oracleId === card.oracleId);
         if (!result || !Array.isArray(result.listings)) throw new Error('Resposta incompleta');
@@ -123,7 +145,7 @@ export async function fetchCardTutorResults(
     // A store-wide network/anti-bot failure should not trigger dozens of
     // identical requests for the rest of a Commander-sized wishlist.
     const resolvedBatch = output.slice(offset, offset + batch.length);
-    if (resolvedBatch.length > 0 && resolvedBatch.every((row) =>
+    if (confirmedResponse && resolvedBatch.length > 0 && resolvedBatch.every((row) =>
       ['blocked', 'store_unavailable', 'timeout'].includes(row.error ?? '')
     )) {
       const reason = resolvedBatch.some((row) => row.error === 'blocked')
