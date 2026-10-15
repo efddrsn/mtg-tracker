@@ -44,7 +44,7 @@ export interface CardTutorResult {
   storeName?: string;
   status?: 'checked' | 'unverified';
   checkedAt?: string;
-  method?: 'direct' | 'browser' | 'firecrawl';
+  method?: 'direct' | 'tls' | 'browser' | 'firecrawl';
 }
 
 export function availableListings(result: CardTutorResult) {

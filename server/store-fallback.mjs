@@ -1,4 +1,5 @@
 import { resolveCardTutorCard } from './cardtutor.mjs';
+import { tlsLoad } from './store-tls.mjs';
 import { publicStoreUrl } from './store-network.mjs';
 
 let browserPromise;
@@ -49,25 +50,29 @@ async function firecrawlLoad(url, { signal }) {
 }
 
 export function createResilientLookup({ direct = resolveCardTutorCard, browser = browserLoad,
+  tls = tlsLoad, useTls = process.env.STORE_TLS_ENABLED === 'true',
   remote = firecrawlLoad, useBrowser = process.env.STORE_BROWSER_ENABLED !== 'false',
   useRemote = Boolean(process.env.FIRECRAWL_API_KEY) } = {}) {
   return async (name, signal, origin) => {
     let best;
     let failure;
-    for (const [method, load] of [['direct', null], ...(useBrowser ? [['browser', browser]] : []),
+    for (const [method, load] of [['direct', null], ...(useTls ? [['tls', tls]] : []), ...(useBrowser ? [['browser', browser]] : []),
       ...(useRemote ? [['firecrawl', remote]] : [])]) {
       signal?.throwIfAborted();
       try {
         // Give the free direct route a short budget; keep time for rendered fallbacks.
         const attemptSignal = AbortSignal.any([
-          ...(signal ? [signal] : []), AbortSignal.timeout(25_000),
+          ...(signal ? [signal] : []), AbortSignal.timeout(method === 'direct' ? 12_000 : method === 'tls' ? 20_000 : 25_000),
         ]);
         const result = await direct(name, attemptSignal, origin, load ?? undefined);
         if (!best || result.matched) best = { ...result, method };
         if (result.matched && result.listings.length && result.listings.every((offer) => offer.stock != null)) {
           return { ...result, method };
         }
-      } catch (error) { failure ??= error; }
+      } catch (error) {
+        failure ??= error;
+        console.warn('Store transport failed', new URL(origin ?? 'https://www.cardtutor.com.br/').hostname, method, error.message?.slice(0, 180));
+      }
     }
     if (best) return { ...best, error: best.error ?? 'offers_unavailable' };
     throw failure ?? new Error('Store unavailable');

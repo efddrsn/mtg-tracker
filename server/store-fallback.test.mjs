@@ -5,6 +5,16 @@ import { validateStoreRequest, createStoreResolver } from './stores.mjs';
 const offer = { edition: 'Test', editionId: '1', stock: 2, price: 10 };
 const found = { matched: true, listings: [offer], url: 'https://example.com/?view=ecom/item&refid=1' };
 describe('store fallback chain', () => {
+  it('uses TLS transport after HTTP failure and skips browser when inventory is complete', async () => {
+    const tls = vi.fn();
+    const browser = vi.fn();
+    const direct = vi.fn().mockRejectedValueOnce(new Error('HTTP 403')).mockResolvedValue(found);
+    const result = await createResilientLookup({ direct, tls, browser, useTls: true, useRemote: false })('Card');
+    expect(result.method).toBe('tls');
+    expect(direct.mock.calls[1][3]).toBe(tls);
+    expect(browser).not.toHaveBeenCalled();
+  });
+
   it('avoids browser and paid requests when direct offers are complete', async () => {
     const direct = vi.fn().mockResolvedValue(found);
     const browser = vi.fn();
