@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SavedCard } from '../deck/deckStore';
 import { STORES, initialStoreResults, availableListings, cardTutorCsv,
-  fetchCardTutorResults, lowestAvailablePrice, type StoreId, type CardTutorResult } from '../stores/cardtutor';
+  fetchCardTutorResults, lowestAvailablePrice, type StoreId, type CardTutorResult, loadCustomStores, saveCustomStores, type StoreDefinition } from '../stores/cardtutor';
 
 function downloadCsv(results: CardTutorResult[], storeId: string) {
   const url = URL.createObjectURL(new Blob([`\uFEFF${cardTutorCsv(results)}`], { type: 'text/csv;charset=utf-8' }));
@@ -14,8 +14,8 @@ function downloadCsv(results: CardTutorResult[], storeId: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function StorePanel({ cards, storeId }: { cards: SavedCard[]; storeId: StoreId }) {
-  const [results, setResults] = useState(() => initialStoreResults(cards, storeId));
+function StorePanel({ cards, storeId, custom }: { cards: SavedCard[]; storeId: StoreId; custom?: StoreDefinition }) {
+  const [results, setResults] = useState(() => initialStoreResults(cards, storeId, custom));
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState('');
   const [manualCopy, setManualCopy] = useState(false);
@@ -33,7 +33,7 @@ function StorePanel({ cards, storeId }: { cards: SavedCard[]; storeId: StoreId }
     setRunning(true);
     setMessage('');
     try {
-      await fetchCardTutorResults(cards, current.signal, storeId, setResults);
+      await fetchCardTutorResults(cards, current.signal, storeId, setResults, custom);
     } catch {
       if (!current.signal.aborted) setMessage('Consulta interrompida. Os links continuam disponíveis.');
     } finally {
@@ -85,6 +85,7 @@ function StorePanel({ cards, storeId }: { cards: SavedCard[]; storeId: StoreId }
                     : result.error ? 'Estoque não verificado · abrir link' : 'Preço/estoque não verificados'}
             </span>
           </div>
+          {result.method && <small>{result.method === 'direct' ? 'Consulta direta' : result.method === 'browser' ? 'Navegador' : 'Firecrawl'}</small>}
           {price != null && <strong>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price)}</strong>}
           <a href={result.url} target="_blank" rel="noreferrer">{result.matched ? 'Produto' : 'Buscar'}</a>
         </article>;
@@ -94,6 +95,11 @@ function StorePanel({ cards, storeId }: { cards: SavedCard[]; storeId: StoreId }
 }
 
 export function CardTutorExport({ cards, onClose }: { cards: SavedCard[]; onClose: () => void }) {
+  const [customStores, setCustomStores] = useState(loadCustomStores);
+  const [adding, setAdding] = useState(false);
+  const [storeName, setStoreName] = useState('');
+  const [storeUrl, setStoreUrl] = useState('');
+  const [storeError, setStoreError] = useState('');
   const [storeId, setStoreId] = useState<StoreId>('cardtutor');
   // Freeze this export's snapshot so background changes cannot restart requests.
   const [snapshot] = useState(() => [...cards]);
@@ -105,10 +111,41 @@ export function CardTutorExport({ cards, onClose }: { cards: SavedCard[]; onClos
         <button type="button" className="version-close" onClick={onClose} aria-label="Fechar">×</button>
       </header>
       <div className="store-export-stores" role="group" aria-label="Loja">
-        {STORES.map((store) => <button key={store.id} type="button" aria-pressed={storeId === store.id}
+        {[...STORES, ...customStores].map((store) => <button key={store.id} type="button" aria-pressed={storeId === store.id}
           onClick={() => setStoreId(store.id as StoreId)}>{store.name}</button>)}
       </div>
-      <StorePanel key={storeId} cards={snapshot} storeId={storeId} />
+      <div className="store-export-actions">
+        <button type="button" onClick={() => setAdding(!adding)}>+ Adicionar loja</button>
+        {customStores.some((store) => store.id === storeId) && <button type="button" onClick={() => {
+          try {
+            const next = customStores.filter((store) => store.id !== storeId);
+            saveCustomStores(next); setCustomStores(next); setStoreId('cardtutor');
+          } catch { setStoreError('Não foi possível salvar a alteração neste navegador.'); }
+        }}>Remover loja</button>}
+      </div>
+      {adding && <form className="store-export-form" onSubmit={(event) => {
+        event.preventDefault();
+        try {
+          const url = new URL(storeUrl.includes('://') ? storeUrl : `https://${storeUrl}`);
+          if (url.protocol !== 'https:' || url.username || url.password || url.port
+            || !/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i.test(url.hostname)) throw new Error();
+          if ([...STORES, ...customStores].some((store) => new URL(store.origin).hostname === url.hostname)) {
+            setStoreError('Esta loja já está cadastrada.'); return;
+          }
+          const store = { id: `custom-${crypto.randomUUID()}`, name: storeName.trim(), origin: `${url.origin}/` };
+          if (!store.name) throw new Error();
+          const next = [...customStores, store];
+          saveCustomStores(next); setCustomStores(next); setStoreId(store.id);
+          setAdding(false); setStoreName(''); setStoreUrl(''); setStoreError('');
+        } catch { setStoreError('Confira o endereço HTTPS e permita salvar dados neste navegador.'); }
+      }}>
+        <p className="store-export-note">Lojas que usam a plataforma LigaMagic. Salvas neste navegador.</p>
+        <label>Nome da loja<input required maxLength={60} value={storeName} onChange={(event) => setStoreName(event.target.value)} /></label>
+        <label>Site da loja<input required inputMode="url" placeholder="https://www.loja.com.br" value={storeUrl} onChange={(event) => setStoreUrl(event.target.value)} /></label>
+        <button type="submit">Salvar loja</button>
+      </form>}
+      {storeError && <p role="alert">{storeError}</p>}
+      <StorePanel key={storeId} cards={snapshot} storeId={storeId} custom={customStores.find((store) => store.id === storeId)} />
     </section>
   </div>;
 }

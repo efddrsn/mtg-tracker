@@ -32,7 +32,7 @@ describe('CardTutor adapter', () => {
       ok: true, url: finalUrl, text: async () => '<main>Sol Ring</main>',
     })));
     try {
-      const result = await resolveCardTutorCard('Sol Ring', undefined, origin);
+      const result = await resolveCardTutorCard('Sol Ring', undefined, origin, fetch);
       expect(result).toMatchObject({ name: 'Sol Ring', matched: true, url: finalUrl });
       expect(result.listings).toEqual([]);
     } finally {

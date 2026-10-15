@@ -50,14 +50,39 @@ Wishlist → **Links de compra** supports **CardTutor, Mox Vault and Epic One**.
 Links and CSV are immediately available, including lists over 60 cards. Select
 a store and optionally check prices/stock in batches of three; failures preserve
 every card and its exact-search URL. Unknown stock is exported as `unknown`,
-not out of stock. Store anti-bot challenges are not bypassed: open the link in
-your browser to verify those offers. The CSV separates the requested printing
+not out of stock. Lookup now tries session-preserving HTTP (cookies across redirects,
+HTTPS proxy support), then Chromium rendering, then optional Firecrawl. Parsed
+stock remains unknown when none succeeds; there is no guaranteed CAPTCHA bypass.
+The method used is shown with each result. The CSV separates the requested printing
 from the cheapest available offer; exact-printing equivalence is not guaranteed.
-API: `POST /api/stores/{cardtutor|moxvault|epicone}/resolve`, `{cards:[{name,oracleId,setCode,collectorNumber}]}`.
-Legacy batches up to 500 are accepted with a 12-second overall lookup deadline;
-the UI uses three-card batches to avoid proxy timeouts. Cache lifetime: 5 minutes
-for parsed offers, 30 seconds for unverified responses. For local development,
-run `npm start` (port 3000) alongside `npm run dev` for the API proxy.
+
+**+ Adicionar loja** accepts a name and HTTPS site for any LigaMagic storefront.
+Custom stores persist in this browser and can be removed. Other ecommerce platforms
+need a different parser and will show unverified results. Custom origins are validated
+server-side, redirects revalidated, private/reserved IPv4 targets rejected, and direct
+connections pinned to validated DNS results. IPv6-only stores are unsupported.
+
+API: `POST /api/stores/{cardtutor|moxvault|epicone}/resolve`,
+`{cards:[{name,oracleId,setCode,collectorNumber}]}`. For custom stores:
+`POST /api/stores/custom/resolve`, with the same cards plus
+`store:{name:"My Store",origin:"https://www.store.com.br/"}`.
+Legacy batches up to 500 are accepted with an 90-second overall lookup deadline;
+the UI uses three-card batches and an 95-second timeout. Cache lifetime: 5 minutes
+for parsed offers, 30 seconds for unverified responses, isolated by origin.
+For local development, run `npm start` (port 3000) alongside `npm run dev`.
+
+The Docker build installs Chromium and its system dependencies; Railway uses that
+Dockerfile. For local browser fallback install with `npx playwright install --with-deps chromium`.
+Set `STORE_BROWSER_ENABLED=false` to disable browser fallback. Optionally set
+`FIRECRAWL_API_KEY` on the server to enable the final fallback (billable requests;
+never sent to the frontend). No external scraping service is required for HTTP/browser
+lookups. Firecrawl v2 uses fresh raw HTML (`maxAge:0`) and the same deterministic
+parser rather than AI-generated prices. Unconfigured Firecrawl is skipped.
+
+Validation on 2026-10-15: live CardTutor HTTP lookup resolved an exact product URL
+and parsed 102 offers with edition, condition, price and quantity. Browser and
+Firecrawl strategy routing are covered by injected tests; external-provider success
+is dependent on store challenges and credentials.
 
 The first store adapter resolves exact CardTutor product pages, extracts live
 offer details, and exports links or CSV from the wishlist. The next phase adds

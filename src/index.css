@@ -1388,7 +1388,7 @@ input, button, select, textarea {
   border-top-color: #b9dc9c; border-radius: 50%; animation: spin .7s linear infinite;
 }
 .store-export-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.store-export-stores { display: flex; gap: 6px; margin-bottom: 14px; }
+.store-export-stores { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
 .store-export-stores button { flex: 1; padding: 10px 5px; border: 1px solid #36483e; border-radius: 10px; color: #b9dc9c; background: #18231f; }
 .store-export-stores button[aria-pressed="true"] { background: #b9dc9c; color: #0d1513; }
 .store-export-actions button:disabled { opacity: .5; }
@@ -1499,3 +1499,7 @@ input, button, select, textarea {
   .deck-header-actions .sheet-text-btn { font-size: 11px; }
   .version-hero { grid-template-columns: 43% 1fr; gap: 12px; }
 }
+
+.store-export-form { display: grid; gap: 10px; padding: 12px; }
+.store-export-form label { display: grid; gap: 4px; }
+.store-export-form input { min-width: 0; width: 100%; padding: 10px; border: 1px solid #666; border-radius: 8px; background: #171717; color: white; font: inherit; }
