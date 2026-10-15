@@ -114,6 +114,8 @@ export async function resolveCardTutorCard(name, signal, origin = CARDTUTOR_ORIG
   // Trust only the selected store's own host or its known canonical alias.
   const originalHostname = new URL(origin).hostname;
   const sameStore = redirected.origin === new URL(origin).origin
+    || (redirected.protocol === 'https:' && !redirected.port
+      && redirected.hostname.replace(/^www\./, '') === originalHostname.replace(/^www\./, ''))
     || (originalHostname === 'www.epicgame.com.br'
       && ['www.epicone.com.br', 'epicone.com.br'].includes(redirected.hostname));
   if (sameStore && redirected.searchParams.get('view') === 'ecom/item' && redirectedRefid) {

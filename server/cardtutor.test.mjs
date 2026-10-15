@@ -7,6 +7,15 @@ import {
 } from './cardtutor.mjs';
 
 describe('CardTutor adapter', () => {
+  it('accepts www canonicalization for manually added stores without trusting other hosts', async () => {
+    for (const [host, matched] of [['www.shop.com.br', true], ['other.com.br', false]]) {
+      const load = vi.fn(async () => ({ ok: true,
+        url: `https://${host}/?view=ecom/item&refid=abc`, text: async () => '<main>Card</main>' }));
+      const result = await resolveCardTutorCard('Card', undefined, 'https://shop.com.br/', load);
+      expect(result.matched).toBe(matched);
+    }
+  });
+
   it('builds a CardTutor search fallback', () => {
     const url = new URL(cardTutorSearchUrl('Fire // Ice'));
     expect(url.searchParams.get('view')).toBe('ecom/itens');

@@ -51,7 +51,8 @@ Links and CSV are immediately available, including lists over 60 cards. Select
 a store and optionally check prices/stock in batches of three; failures preserve
 every card and its exact-search URL. Unknown stock is exported as `unknown`,
 not out of stock. Lookup now tries session-preserving HTTP (cookies across redirects,
-HTTPS proxy support), then Chromium rendering, then optional Firecrawl. Parsed
+HTTPS proxy support), then browser-compatible TLS/HTTP2 using curl_cffi,
+then Chromium rendering, then optional Firecrawl. Parsed
 stock remains unknown when none succeeds; there is no guaranteed CAPTCHA bypass.
 The method used is shown with each result. The CSV separates the requested printing
 from the cheapest available offer; exact-printing equivalence is not guaranteed.
@@ -72,15 +73,22 @@ for parsed offers, 30 seconds for unverified responses, isolated by origin.
 For local development, run `npm start` (port 3000) alongside `npm run dev`.
 
 The Docker build installs Chromium and its system dependencies; Railway uses that
-Dockerfile. For local browser fallback install with `npx playwright install --with-deps chromium`.
+Dockerfile. The free TLS fallback is enabled in Docker with a pinned Python virtual environment.
+For local TLS testing install `curl_cffi==0.16.3`, set `STORE_TLS_ENABLED=true`,
+and optionally `STORE_PYTHON` to the Python executable. Every TLS redirect is
+validated and its DNS pinned before connecting; certificates remain verified.
+For local browser fallback install with `npx playwright install --with-deps chromium`.
 Set `STORE_BROWSER_ENABLED=false` to disable browser fallback. Optionally set
 `FIRECRAWL_API_KEY` on the server to enable the final fallback (billable requests;
 never sent to the frontend). No external scraping service is required for HTTP/browser
 lookups. Firecrawl v2 uses fresh raw HTML (`maxAge:0`) and the same deterministic
 parser rather than AI-generated prices. Unconfigured Firecrawl is skipped.
 
-Validation on 2026-10-15: live CardTutor HTTP lookup resolved an exact product URL
-and parsed 102 offers with edition, condition, price and quantity. Browser and
+Production validation on 2026-10-15: the Railway HTTP transport returned 403,
+but the TLS fallback verified both Sol Ring and Arcane Signet at all three stores.
+Sol Ring: CardTutor 102 offers, Mox Vault 38, Epic One 112; Arcane Signet: 65, 29,
+and 75 respectively. No paid provider was configured. This is a point-in-time
+smoke test, not a guarantee against future store challenges. Browser and
 Firecrawl strategy routing are covered by injected tests; external-provider success
 is dependent on store challenges and credentials.
 
