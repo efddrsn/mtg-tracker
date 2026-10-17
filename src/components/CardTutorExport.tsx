@@ -85,7 +85,7 @@ function StorePanel({ cards, storeId, custom }: { cards: SavedCard[]; storeId: S
                     : result.error ? 'Estoque não verificado · abrir link' : 'Preço/estoque não verificados'}
             </span>
           </div>
-          {result.method && <small>{['direct', 'tls'].includes(result.method) ? 'Consulta direta' : result.method === 'browser' ? 'Navegador' : 'Firecrawl'}</small>}
+          {result.method && <small>{['direct', 'tls'].includes(result.method) ? 'Consulta direta' : result.method === 'browser' ? 'Navegador' : result.method === 'tinyfish' ? 'TinyFish' : 'Firecrawl'}</small>}
           {price != null && <strong>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price)}</strong>}
           <a href={result.url} target="_blank" rel="noreferrer">{result.matched ? 'Produto' : 'Buscar'}</a>
         </article>;

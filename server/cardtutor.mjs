@@ -1,7 +1,7 @@
 import { storeFetch } from './store-network.mjs';
 const CARDTUTOR_ORIGIN = 'https://www.cardtutor.com.br/';
 
-function decodeHtml(value) {
+export function decodeHtml(value) {
   const named = {
     agrave: 'à', aacute: 'á', acirc: 'â', atilde: 'ã', ccedil: 'ç', eacute: 'é', ecirc: 'ê',
     iacute: 'í', oacute: 'ó', ocirc: 'ô', otilde: 'õ', uacute: 'ú', uuml: 'ü',

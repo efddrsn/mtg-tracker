@@ -145,3 +145,21 @@ Open on your phone or use browser dev tools in mobile mode.
 - Tailwind CSS v4
 - Zustand (state management with persistence)
 - React Router
+
+### Store access when Railway is rejected
+
+TinyFish Fetch is supported as an external fallback after HTTP/TLS and before the
+local browser. Set `TINYFISH_API_KEY` in the server's Railway variables. The ChatGPT
+TinyFish connection cannot supply credentials to this deployed app. The key is never
+sent to the frontend. No key means this route is disabled; it is not a working fallback
+until configured and tested from production.
+
+The adapter calls `https://api.fetch.tinyfish.ai` with `ttl:0` and parses labeled
+semantic HTML, because TinyFish strips the storefront CSS classes. It verifies the
+card title, product refid and selected shop's canonical host, and keeps unknown stock
+unverified. Fixtures from live CardTutor/MoxVault/Epic One responses cover both HTML
+shapes observed on 2026-10-17. These prove extraction, not deployed API authentication.
+
+The TLS route now starts a normal store session on the homepage before searching.
+Rejections log only host, HTTP status and public error-page metadata (not cookies,
+keys or user lists), so provider errors can be distinguished from shop rejection.
