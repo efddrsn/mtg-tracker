@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test, after } from 'node:test';
+import { test, afterAll } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,7 +14,7 @@ const server = createServer((req, res) => {
 });
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const origin = 'http://127.0.0.1:' + server.address().port;
-after(async () => {
+afterAll(async () => {
   await new Promise((resolve) => server.close(resolve));
   await rm(path, { recursive: true, force: true });
 });
