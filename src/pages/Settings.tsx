@@ -34,7 +34,7 @@ export function Settings() {
         <button
           className="counter-btn w-9 h-9 flex items-center justify-center rounded-xl
                      text-text-primary bg-white/10 hover:bg-white/20 active:scale-95"
-          onClick={() => { vibrate(10); navigate('/'); }}
+          onClick={() => { vibrate(10); navigate('/tracker'); }}
           aria-label="Back to tracker"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
