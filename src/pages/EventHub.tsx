@@ -45,6 +45,16 @@ export function EventHub() {
   const [shareStatus, setShareStatus] = useState('');
   const [shareUrl, setShareUrl] = useState('');
   const [busy, setBusy] = useState(false);
+  const [hubShareStatus, setHubShareStatus] = useState('');
+  async function shareHub() {
+    const url = window.location.origin + '/';
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Magic Hub — ferramentas gratuitas de MTG', url }); return; }
+      catch (e) { if ((e as Error).name === 'AbortError') return; }
+    }
+    try { await navigator.clipboard.writeText(url); setHubShareStatus('Link do Magic Hub copiado!'); }
+    catch { setHubShareStatus(url); }
+  }
 
   async function register(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -95,7 +105,7 @@ export function EventHub() {
         <Pill>Grátis · Criado para jogadores · Early access</Pill>
         <h1 className="text-4xl font-black leading-tight tracking-tight sm:text-5xl">Seu Magic, <span className="text-indigo-300">num só lugar.</span></h1>
         <p className="max-w-lg text-sm leading-relaxed text-slate-300">Descubra cartas, monte listas, consulte lojas e imprima seu binder. Use sem conta; cadastre-se se quiser acompanhar as novidades e participar da comunidade.</p>
-        <div className="flex flex-wrap gap-2"><a href="#apps" className={button}>Explorar ferramentas</a><a href="#cadastro" className={ghost}>Entrar na comunidade</a></div>
+        <div className="flex flex-wrap gap-2"><a href="#apps" className={button}>Explorar ferramentas</a><button type="button" onClick={() => void shareHub()} className={ghost}>Compartilhar app</button><a href="#cadastro" className={ghost}>Entrar na comunidade</a></div>{hubShareStatus && <p className="break-all text-xs text-indigo-300" role="status">{hubShareStatus}</p>}
       </section>
       <section id="apps" className="space-y-3">
         <div className="flex items-center justify-between"><h2 className="text-xl font-bold">Ferramentas</h2><span className="text-xs text-slate-400">Sem cobrança por IA</span></div>
