@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Tracker } from './pages/Tracker';
 import { Settings } from './pages/Settings';
 import { SwipeDeck } from './pages/SwipeDeck';
+import { EventHub, EventAdmin, Community, SharedList, PrintBinder } from './pages/EventHub';
 import { AuroraLayer } from './components/AuroraLayer';
 import { useStore, DEFAULT_BG, DEFAULT_BG_BRIGHTNESS } from './store';
 
@@ -74,7 +75,12 @@ function App() {
       <div className="app-bg-dim" aria-hidden />
       <div className="app-shell flex flex-col h-full">
         <Routes>
-          <Route path="/" element={<Tracker />} />
+          <Route path="/" element={<EventHub />} />
+          <Route path="/tracker" element={<Tracker />} />
+          <Route path="/community" element={<Community />} />
+          <Route path="/share/:id" element={<SharedList />} />
+          <Route path="/print" element={<PrintBinder />} />
+          <Route path="/admin" element={<EventAdmin />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/swipe" element={<SwipeDeck />} />
         </Routes>
