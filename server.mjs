@@ -249,7 +249,9 @@ async function proxyBinder(req, res) {
     const disposition = upstreamRes.headers.get('content-disposition');
     if (disposition) outputHeaders['Content-Disposition'] = disposition;
     if (/text\/html|javascript|text\/css/.test(contentType)) {
-      const contents = (await upstreamRes.text()).replace(/(["'])\/(api|static|jobs)(?=\/|["'?])/g, '$1/binder/$2');
+      const contents = (await upstreamRes.text())
+        .replace(/(["'`])\/(api|static|jobs)(?=\/|["'`?])/g, '$1/binder/$2')
+        .replace(/href=(['"])\/(?=\1)/g, 'href=$1/binder/');
       res.writeHead(upstreamRes.status, outputHeaders);
       res.end(contents);
     } else {
