@@ -1,7 +1,7 @@
 {
-  "name": "MTG Tracker",
-  "short_name": "MTG",
-  "description": "Track mana, storm, phases, and counters for Magic: The Gathering",
+  "name": "Magic Hub — Ferramentas de MTG",
+  "short_name": "Magic Hub",
+  "description": "Descubra cartas, monte listas, acompanhe jogos e crie seu Print Binder. Gratuito.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0f",

@@ -118,7 +118,7 @@ export function EventHub() {
       </section>
       <section className={panel + ' space-y-4'}>
         <div><Pill>Compartilhe no evento</Pill><h2 className="mt-3 text-xl font-bold">Compartilhe suas cartas</h2>
-        <p className="mt-1 text-sm text-slate-400">Crie um link de uma lista do Swiper para mandar por WhatsApp, QR ou copiar. Nenhum email é divulgado.</p></div>
+        <p className="mt-1 text-sm text-slate-400">Crie um link de uma lista do Swiper para enviar pelo WhatsApp ou copiar. Nenhum email é divulgado.</p></div>
         <div className="flex gap-3 text-sm"><span>Wishlist: <b>{wishlist.length}</b></span><span>Minhas cartas: <b>{owned.length}</b></span></div>
         <input className={field} value={shareTitle} onChange={(e) => setShareTitle(e.target.value)} maxLength={90} placeholder="Título da lista (opcional)" aria-label="Título da lista" />
         <input className={field} value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={40} placeholder="Seu nick (opcional)" aria-label="Seu nick" />
