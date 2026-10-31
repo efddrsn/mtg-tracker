@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { fetchLigaMagicPrice, ligaMagicUrl } from './server/ligamagic-price.mjs';
 import { fetchCommanderTopPicks } from './server/recommander-page.mjs';
 import { createStoreResolver, validateStoreRequest } from './server/stores.mjs';
+import { createResilientLookup } from './server/store-fallback.mjs';
+import { handleEventApi } from './server/event-community.mjs';
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), 'dist');
 const port = Number(process.env.PORT ?? 3000);
@@ -196,7 +198,8 @@ async function readJsonBody(req, maxLength = 256_000) {
   return JSON.parse(body);
 }
 
-const resolveStoreCards = createStoreResolver();
+const resolveStoreCards = createStoreResolver(process.env.EVENT_FREE_ONLY === 'true'
+  ? createResilientLookup({ useTinyfish: false, useRemote: false }) : undefined);
 
 async function cardTutorResolve(req, res, storeId = 'cardtutor') {
   if (req.method !== 'POST') {
@@ -214,6 +217,52 @@ async function cardTutorResolve(req, res, storeId = 'cardtutor') {
   }
   const cards = await resolveStoreCards(input.store, input.cards);
   json(res, 200, { cards, checkedAt: new Date().toISOString() });
+}
+
+
+const binderOrigin = process.env.BINDER_UPSTREAM || 'https://binder-production-c22c.up.railway.app';
+async function proxyBinder(req, res) {
+  try {
+    const url = new URL(req.url || '/binder/', 'http://localhost');
+    const path = url.pathname.replace(/^\/binder/, '') || '/';
+    const target = new URL(path + url.search, binderOrigin);
+    if (target.origin !== new URL(binderOrigin).origin) throw new Error('Bad upstream');
+    const headers = { Accept: req.headers.accept || '*/*' };
+    if (req.headers['content-type']) headers['Content-Type'] = req.headers['content-type'];
+    let body;
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      const chunks = [];
+      let size = 0;
+      for await (const chunk of req) {
+        size += chunk.length;
+        if (size > 250000) { json(res, 413, { error: 'Lista grande demais.' }); return; }
+        chunks.push(chunk);
+      }
+      body = Buffer.concat(chunks);
+    }
+    const upstreamRes = await fetch(target, {
+      method: req.method, headers, body, signal: AbortSignal.timeout(120000)
+    });
+    const contentType = upstreamRes.headers.get('content-type') || 'application/octet-stream';
+    const outputHeaders = { 'Content-Type': contentType, 'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff' };
+    const disposition = upstreamRes.headers.get('content-disposition');
+    if (disposition) outputHeaders['Content-Disposition'] = disposition;
+    if (/text\/html|javascript|text\/css/.test(contentType)) {
+      const contents = (await upstreamRes.text())
+        .replace(/(["'`])\/(api|static|jobs)(?=\/|["'`?])/g, '$1/binder/$2')
+        .replace(/href=(['"])\/(?=\1)/g, 'href=$1/binder/');
+      res.writeHead(upstreamRes.status, outputHeaders);
+      res.end(contents);
+    } else {
+      const bytes = Buffer.from(await upstreamRes.arrayBuffer());
+      res.writeHead(upstreamRes.status, outputHeaders);
+      res.end(bytes);
+    }
+  } catch (error) {
+    console.warn('binder_proxy_error', error.message);
+    if (!res.headersSent) json(res, 502, { error: 'Print Binder indisponível. Tente novamente.' });
+  }
 }
 
 function serveStatic(req, res) {
@@ -236,6 +285,15 @@ function serveStatic(req, res) {
 }
 
 createServer((req, res) => {
+  const pathname = new URL(req.url || '/', 'http://localhost').pathname;
+  if (pathname.startsWith('/api/event/')) {
+    void handleEventApi(req, res, pathname);
+    return;
+  }
+  if (pathname === '/binder' || pathname.startsWith('/binder/')) {
+    void proxyBinder(req, res);
+    return;
+  }
   if (req.url?.startsWith('/api/recommander')) {
     void proxyRecommander(req, res);
     return;
