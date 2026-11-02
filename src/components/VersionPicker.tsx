@@ -12,7 +12,6 @@ interface VersionPickerProps {
 function printingTags(card: DeckCard): string[] {
   const tags = [...(card.frameEffects ?? [])];
   if (card.borderColor === 'borderless') tags.unshift('borderless');
-  if (tags.length === 0) tags.push('classic');
   return [...new Set(tags)].slice(0, 4);
 }
 
@@ -73,9 +72,11 @@ export function VersionPicker({ card, list, onClose }: VersionPickerProps) {
                   {(selected.setCode ?? '').toUpperCase()} #{selected.collectorNumber}
                   {selected.language ? ` · ${selected.language.toUpperCase()}` : ''}
                 </p>
-                <div className="version-tags">
-                  {printingTags(selected).map((tag) => <span key={tag}>{tag}</span>)}
-                </div>
+                {printingTags(selected).length > 0 && (
+                  <div className="version-tags">
+                    {printingTags(selected).map((tag) => <span key={tag}>{tag}</span>)}
+                  </div>
+                )}
                 {selected.artist && <em>Arte: {selected.artist}</em>}
                 <BrazilPriceBadge
                   name={selected.name}
