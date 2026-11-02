@@ -239,7 +239,6 @@ export function SwipeDeck() {
             dy={0}
             animate={false}
             depth={1}
-            interactive={false}
           />
         )}
         <SwipeCard
@@ -249,8 +248,6 @@ export function SwipeDeck() {
           dy={drag.y}
           animate={animate}
           depth={0}
-          interactive
-          addLabel={pickingCommander ? 'COMMANDER' : 'ADD'}
         />
       </>
     );
@@ -316,6 +313,15 @@ export function SwipeDeck() {
         onPointerCancel={endGesture}
       >
         {renderStack()}
+        {top && Math.abs(drag.x) > 8 && (
+          <div
+            className={`swipe-decision-overlay ${drag.x > 0 ? 'swipe-decision-positive' : 'swipe-decision-negative'}`}
+            style={{ opacity: Math.min(1, Math.abs(drag.x) / 100) }}
+            aria-hidden="true"
+          >
+            {drag.x < 0 ? 'PASSAR' : pickingCommander ? 'COMANDANTE' : drag.y > 0 ? 'JÁ TENHO' : 'WISHLIST'}
+          </div>
+        )}
 
         {/* Edge hints — suppressed when a context banner occupies that edge */}
         <div className="swipe-hint swipe-hint-top">▼ filters</div>
