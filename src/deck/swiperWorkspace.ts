@@ -3,35 +3,29 @@ import { useDeckStore, type DeckState, type SavedCard } from "./deckStore";
 import { fromCards, makeDeck, toCard, useHubStore, type HubDeck, type HubCard, type SwipeCorner, type SwipePile, type SwipeSession } from "./hubStore";
 
 export const DEFAULT_CORNERS: Record<SwipeCorner, SwipePile> = {
-  nw: "maybe",
-  ne: "wishlist",
-  sw: "deck",
-  se: "owned",
+  nw: "maybe", ne: "deck", sw: "sideboard", se: "sideboard",
 };
 
-/** Deck is the containing workspace, never a visible swipe destination.
- * Preserve old pile data but safely migrate legacy corner assignments to the
- * three actual user piles (Maybe, Wishlist, Collection). Discard stays fixed. */
+/** Three visible destinations: Main, Sideboard, Maybe. The lower-left corner
+ * is reserved for discard, and old Wishlist/Owned corners are reset without
+ * deleting the cards they held in legacy storage. */
 export function normalizedDestinations(saved?: Partial<Record<SwipeCorner, SwipePile>>): Record<SwipeCorner, SwipePile> {
   const slots: Array<"nw" | "ne" | "se"> = ["nw", "ne", "se"];
-  const allowed: SwipePile[] = ["maybe", "wishlist", "owned"];
-  const result: Record<SwipeCorner, SwipePile> = { ...DEFAULT_CORNERS, sw: "deck" };
+  const allowed: SwipePile[] = ["deck", "sideboard", "maybe"];
+  const result: Record<SwipeCorner, SwipePile> = { ...DEFAULT_CORNERS };
   const used = new Set<SwipePile>();
   for (const slot of slots) {
     const choice = saved?.[slot];
     if (choice && allowed.includes(choice) && !used.has(choice)) {
       result[slot] = choice;
       used.add(choice);
-    } else {
-      result[slot] = "deck"; // sentinel until all valid positions are claimed
     }
   }
   for (const slot of slots) {
-    if (result[slot] !== "deck") continue;
-    const preferred = DEFAULT_CORNERS[slot];
-    const replacement = !used.has(preferred) ? preferred : allowed.find(p => !used.has(p))!;
-    result[slot] = replacement;
-    used.add(replacement);
+    if (used.has(result[slot])) continue;
+    const choice = allowed.find(p => !used.has(p))!;
+    result[slot] = choice;
+    used.add(choice);
   }
   return result;
 }
@@ -53,6 +47,7 @@ export function swipeSessionFor(deck: HubDeck): SwipeSession {
     : blank;
   return {
     deck: stored?.deck || [],
+    sideboard: stored?.sideboard || [],
     wishlist: stored?.wishlist || [],
     owned: stored?.owned || [],
     maybe: stored?.maybe || [],
@@ -60,34 +55,41 @@ export function swipeSessionFor(deck: HubDeck): SwipeSession {
     swipeCount: stored?.swipeCount || 0,
     revisions: stored?.revisions || [],
     config,
-    source: stored?.source === "deck" ? "recommendations" : stored?.source || "recommendations",
-    reviewIndex: stored?.source === "deck" ? 0 : stored?.reviewIndex || 0,
+    source: stored?.source === "wishlist" || stored?.source === "owned"
+      ? "recommendations" : stored?.source || "recommendations",
+    reviewIndex: stored?.source === "wishlist" || stored?.source === "owned"
+      ? 0 : stored?.reviewIndex || 0,
     corners: normalizedDestinations(stored?.corners),
   };
 }
 
 export function hydratedDeckState(deck: HubDeck) {
   const session = swipeSessionFor(deck);
-  const cards = deck.cards.filter(c => c.section !== "sideboard");
-  const isDeck = deck.kind === "deck";
-  const selectedCommander = isDeck ? cards.find(c => c.section === "commander") : undefined;
-  const commander = selectedCommander ? { ...toCard(selectedCommander), addedAt: Date.now(), quantity: selectedCommander.quantity } : null;
+  const mainCards = deck.cards.filter(c => c.section === "main" || c.section === "commander");
+  const selectedCommander = mainCards.find(c => c.section === "commander");
+  const commander = selectedCommander
+    ? { ...toCard(selectedCommander), addedAt: Date.now(), quantity: selectedCommander.quantity }
+    : null;
   const asSaved = (items: HubCard[]): SavedCard[] => items.map(c => ({
     ...toCard(c), addedAt: Date.now(), quantity: c.quantity,
   }));
-  const loadedCards = asSaved(cards);
-  const loadedDeck = isDeck ? loadedCards : asSaved(session.deck || []);
-  const owned = deck.kind === "collection" ? loadedCards : asSaved(session.owned);
+  const loadedDeck = asSaved(mainCards);
+  const loadedSide = asSaved(deck.cards.filter(c => c.section === "sideboard"));
+  const loadedMaybe = asSaved(deck.cards.filter(c => c.section === "maybe"));
+  const sideboard = loadedSide.length ? loadedSide : asSaved(session.sideboard || []);
+  const maybe = loadedMaybe.length ? loadedMaybe : asSaved(session.maybe);
+  const wishlist = asSaved(session.wishlist);
+  const owned = asSaved(session.owned);
   const rejected = [...new Set([
-    ...session.rejected, ...loadedCards.map(c => c.oracleId),
-    ...session.wishlist.map(c => c.oracleId || c.name),
-    ...session.maybe.map(c => c.oracleId || c.name),
-    ...session.owned.map(c => c.oracleId || c.name),
+    ...session.rejected, ...loadedDeck.map(c => c.oracleId),
+    ...sideboard.map(c => c.oracleId), ...maybe.map(c => c.oracleId),
+    ...wishlist.map(c => c.oracleId), ...owned.map(c => c.oracleId),
   ])].slice(0, 4000);
   return {
     deck: loadedDeck,
-    wishlist: deck.kind === "wishlist" ? loadedCards : asSaved(session.wishlist),
-    maybe: asSaved(session.maybe),
+    sideboard,
+    wishlist,
+    maybe,
     owned,
     commander,
     rejected,
@@ -121,37 +123,49 @@ function sameSelectedPrinting(a: { name: string; oracleId?: string; setCode?: st
 }
 
 export function updatedSwiperDeck(deck: HubDeck, state: DeckState): HubDeck {
-  const main = (deck.kind === "wishlist" ? state.wishlist
-    : deck.kind === "collection" ? state.owned : state.deck).map((c) => {
-    const previous = deck.cards.find(old => old.section !== "sideboard" && sameCard(old, c));
-    const card = fromCards([c])[0];
+  const asHubCards = (items: SavedCard[], section: HubCard["section"]) =>
+    items.map(c => {
+      const previous = deck.cards.find(old =>
+        old.section === section && sameSelectedPrinting(old, c));
+      return {
+        ...previous,
+        ...fromCards([c])[0],
+        quantity: c.quantity || previous?.quantity || 1,
+        section,
+      };
+    });
+  const main = state.deck.map(c => {
+    const section: HubCard["section"] = state.commander && sameSelectedPrinting(c, state.commander)
+      ? "commander" : "main";
+    const previous = deck.cards.find(old =>
+      (old.section === "main" || old.section === "commander") && sameSelectedPrinting(old,c));
     return {
-      ...previous,
-      ...card,
-      quantity: c.quantity || previous?.quantity || 1,
-      section: deck.kind === "deck" && state.commander && sameSelectedPrinting(c, state.commander)
-        ? "commander" as const : "main" as const,
+      ...previous, ...fromCards([c])[0],
+      quantity: c.quantity || previous?.quantity || 1, section,
     };
   });
-  // Sideboard is intentionally preserved: the swipe surface edits only the
-  // commander/mainboard and must not flatten or delete sideboard quantities.
-  const cards = [...main, ...deck.cards.filter(c => c.section === "sideboard")];
+  // Sections are independent. Moving a card into Side or Maybe updates the
+  // canonical deck list as well as its per-workspace Swiper session.
+  const cards = [
+    ...main,
+    ...asHubCards(state.sideboard, "sideboard"),
+    ...asHubCards(state.maybe, "maybe"),
+  ];
   const base = swipeSessionFor(deck);
   const swiper: SwipeSession = {
     ...base,
     config: state.config,
     deck: fromCards(state.deck),
+    sideboard: asHubCards(state.sideboard, "sideboard"),
     wishlist: fromCards(state.wishlist),
-    maybe: fromCards(state.maybe),
+    maybe: asHubCards(state.maybe, "maybe"),
     owned: fromCards(state.owned),
     rejected: state.rejected.slice(0, 4000),
     swipeCount: state.swipeCount,
     revisions: state.revisions.slice(0, 12),
   };
   return {
-    ...deck,
-    cards,
-    swiper,
+    ...deck, cards, swiper,
     updatedAt: Math.max(Date.now(), deck.updatedAt + 1),
   };
 }
