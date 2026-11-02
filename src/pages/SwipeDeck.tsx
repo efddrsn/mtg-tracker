@@ -169,40 +169,42 @@ export function SwipeDeck() {
 
   const commit = useCallback(
     (decision: Decision) => {
-      const card = feed.queue[0];
-      if (!card || busy.current) return;
+      if (!top || busy.current || !loadedId) return;
       busy.current = true;
       vibrate(decision === 'reject' ? 10 : 18);
-
-      if (decision !== 'reject') {
-        // A "yes" in the commander phase locks in the commander and pivots the
-        // whole feed to its color identity; otherwise it's a normal deck add.
-        if (pickingCommander) setCommander(card);
-        else if (decision === 'owned') addToOwned(card);
-        else addToWishlist(card);
+      history.current.push({ card: top, source, index: reviewIndex, state: snapshot() });
+      const reviewing = source !== 'recommendations';
+      if (decision === 'keep') {
+        if (reviewing) advanceReview(reviewIndex + 1);
+      } else if (decision === 'reject') {
+        if (reviewing) removeFromList(source, top.oracleId);
+        else if (pickingCommander) skip(top);
+        else reject(top);
+      } else if (pickingCommander && !reviewing) {
+        setCommander(top);
       } else {
-        // Passing on a commander shouldn't train the preference model.
-        if (pickingCommander) skip(card);
-        else reject(card);
+        moveCard(top, source, decision);
+        if (reviewing && (decision === source || source === 'owned' || decision === 'owned')) {
+          advanceReview(reviewIndex + 1);
+        }
       }
-      history.current.push({ card, decision });
-
-      const w = window.innerWidth || 400;
+      const w = window.innerWidth || 400, h = window.innerHeight || 700;
+      const corner = decision === 'keep' ? null
+        : CORNERS.find(c => corners[c.id] === decision)?.id;
       setAnimate(true);
-      const h = window.innerHeight || 700;
       setDrag({
-        x: decision === 'reject' ? -w * 1.3 : w * 1.3,
-        y: decision === 'wishlist' ? -h * 0.42 : decision === 'owned' ? h * 0.42 : 0,
+        x: decision === 'reject' ? -w * 1.3 : corner?.endsWith('e') ? w * 1.3 : -w * 1.3,
+        y: corner?.startsWith('n') ? -h * 0.35 : corner?.startsWith('s') ? h * 0.35 : 0,
       });
-
       window.setTimeout(() => {
-        feed.advance();
+        if (!reviewing) feed.advance();
         setAnimate(false);
         setDrag({ x: 0, y: 0 });
         busy.current = false;
       }, FLY_MS);
     },
-    [addToWishlist, addToOwned, reject, skip, setCommander, pickingCommander, feed],
+    [top, source, loadedId, reviewIndex, corners, pickingCommander,
+      reject, skip, setCommander, moveCard, removeFromList, feed],
   );
 
   const undo = useCallback(() => {
@@ -210,13 +212,13 @@ export function SwipeDeck() {
     const last = history.current.pop();
     if (!last) return;
     vibrate(8);
-    // Reverse the store side-effect (removeFromDeck also clears any rejected
-    // flag), then re-show the card on top of the feed.
-    removeFromList(last.decision === 'owned' ? 'owned' : 'wishlist', last.card.oracleId);
-    feed.pushFront(last.card);
+    useDeckStore.setState(last.state);
+    if (last.source === 'recommendations') feed.pushFront(last.card);
+    setSource(last.source);
+    advanceReview(last.index);
     setAnimate(false);
     setDrag({ x: 0, y: 0 });
-  }, [removeFromList, feed]);
+  }, [feed, loadedId]);
 
   // --- Pointer gesture handling ---------------------------------------------
 
@@ -260,10 +262,15 @@ export function SwipeDeck() {
 
     if (locked === 'h') {
       const threshold = (window.innerWidth || 400) * 0.26;
-      if (dx > threshold) {
-        commit(pickingCommander || dy <= 0 ? 'wishlist' : 'owned');
-      } else if (dx < -threshold) {
-        commit('reject');
+      if (Math.abs(dx) > threshold) {
+        if (Math.abs(dy) < 35 && dx < 0) commit('reject');
+        else if (Math.abs(dy) < 35 && dx > 0 && source !== 'recommendations') commit('keep');
+        else {
+          const corner: SwipeCorner = dy < 0
+            ? (dx < 0 ? 'nw' : 'ne')
+            : (dx < 0 ? 'sw' : 'se');
+          commit(corners[corner]);
+        }
       } else {
         setAnimate(true);
         setDrag({ x: 0, y: 0 });
@@ -285,7 +292,7 @@ export function SwipeDeck() {
   // --- Render ----------------------------------------------------------------
 
   const renderStack = () => {
-    if (feed.error && feed.queue.length === 0) {
+    if (source === 'recommendations' && feed.error && feed.queue.length === 0) {
       return (
         <div className="feed-message">
           <p className="feed-message-title">Couldn't load cards</p>
@@ -297,7 +304,7 @@ export function SwipeDeck() {
       );
     }
 
-    if (!top && feed.loading) {
+    if (!top && feed.loading && source === 'recommendations') {
       return (
         <div className="feed-message">
           <div className="feed-spinner" />
@@ -312,15 +319,16 @@ export function SwipeDeck() {
       return (
         <div className="feed-message">
           <p className="feed-message-title">
-            {pickingCommander ? 'No commanders match' : "That's everything"}
+            {source === 'recommendations' ? (pickingCommander ? 'No commanders match' : "That's everything") : 'Fim desta pilha'}
           </p>
           <p className="feed-message-sub">
-            {pickingCommander
-              ? 'Try different colors, or clear them to see every commander.'
+            {source !== 'recommendations'
+              ? 'Escolha outra pilha ou volte às recomendações.'
+              : pickingCommander ? 'Try different colors, or clear them to see every commander.'
               : 'No more matches. Swipe down to widen your filters.'}
           </p>
-          <button type="button" className="feed-retry" onClick={() => setConfigOpen(true)}>
-            Open filters
+          <button type="button" className="feed-retry" onClick={() => source === 'recommendations' ? setConfigOpen(true) : chooseSource('recommendations')}>
+            {source === 'recommendations' ? 'Abrir filtros' : 'Ver recomendações'}
           </button>
         </div>
       );
