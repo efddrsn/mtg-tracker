@@ -62,11 +62,11 @@ export interface DeckState {
   reject: (card: DeckCard) => void;
   skip: (card: DeckCard) => void;
   importCards: (cards: DeckCard[]) => void;
-  removeFromList: (list: CardList, oracleId: string) => void;
+  removeFromList: (list: CardList, oracleId: string, exactCard?: DeckCard) => void;
   removeFromDeck: (oracleId: string) => void;
   clearList: (list: CardList) => void;
   clearDeck: () => void;
-  updateCardPrinting: (list: CardList, oracleId: string, printing: DeckCard) => void;
+  updateCardPrinting: (list: CardList, oracleId: string, printing: DeckCard, original?: DeckCard) => void;
   saveRevision: (label?: string) => void;
   restoreRevision: (id: string) => void;
   deleteRevision: (id: string) => void;
@@ -81,6 +81,15 @@ function save(card: DeckCard): SavedCard {
   return { ...card, addedAt: Date.now() };
 }
 
+// Oracle identity answers "have I seen this name?"; print identity answers
+// "which particular physical printing in this pile is being moved?".
+function samePrinting(left: DeckCard, right: DeckCard): boolean {
+  if (left.oracleId !== right.oracleId) return false;
+  if (left.setCode || right.setCode || left.collectorNumber || right.collectorNumber)
+    return left.setCode === right.setCode && left.collectorNumber === right.collectorNumber;
+  return left.id === right.id;
+}
+
 export const useDeckStore = create<DeckState>()(
   persist(
     (set, get) => {
@@ -88,7 +97,7 @@ export const useDeckStore = create<DeckState>()(
 
       const addToList = (card: DeckCard, list: CardList) => {
         set((s) => {
-          if (s[list].some((c) => c.oracleId === card.oracleId)) return s;
+          if (s[list].some((c) => samePrinting(c, card))) return s;
           return {
             [list]: [save(card), ...s[list]],
             rejected: s.rejected.includes(card.oracleId)
@@ -99,9 +108,10 @@ export const useDeckStore = create<DeckState>()(
         });
       };
 
-      const removeFromList = (list: CardList, oracleId: string) => {
+      const removeFromList = (list: CardList, oracleId: string, exactCard?: DeckCard) => {
         set((s) => {
-          const next = s[list].filter((c) => c.oracleId !== oracleId);
+          const next = s[list].filter((c) => !(c.oracleId === oracleId &&
+            (!exactCard || samePrinting(c, exactCard))));
           const remaining = (['deck', 'wishlist', 'maybe', 'owned'] as const)
             .some((key) => (key === list ? next : s[key]).some((c) => c.oracleId === oracleId));
           return {
@@ -209,15 +219,15 @@ export const useDeckStore = create<DeckState>()(
         moveCard: (card, source, destination) => {
           set((s) => {
             const from = source === 'recommendations' ? null : source;
-            const sourceCard = from ? s[from].find((c) => c.oracleId === card.oracleId) : null;
+            const sourceCard = from ? s[from].find((c) => samePrinting(c, card)) : null;
             const saved = sourceCard || save(card);
             const moved = { ...s } as DeckState;
             // Owned is independent of membership. All other destinations
             // move an existing card unless the source is the recommendation feed.
             if (from && from !== destination && from !== 'owned' && destination !== 'owned') {
-              moved[from] = s[from].filter((c) => c.oracleId !== card.oracleId);
+              moved[from] = s[from].filter((c) => !samePrinting(c, card));
             }
-            if (!s[destination].some((c) => c.oracleId === card.oracleId)) {
+            if (!s[destination].some((c) => samePrinting(c, card))) {
               moved[destination] = [saved, ...s[destination]];
             }
             moved.rejected = s.rejected.includes(card.oracleId)
@@ -281,10 +291,10 @@ export const useDeckStore = create<DeckState>()(
           ...(list === 'deck' ? { commander: null, configVersion: s.configVersion + 1 } : {}),
         })),
         clearDeck: () => set({ deck: [], commander: null }),
-        updateCardPrinting: (list, oracleId, printing) => {
+        updateCardPrinting: (list, oracleId, printing, original) => {
           set((s) => {
             const replaceCard = (cards: SavedCard[]) => cards.map((card) =>
-              card.oracleId === oracleId
+              card.oracleId === oracleId && (!original || samePrinting(card, original))
                 ? { ...printing, addedAt: card.addedAt, quantity: card.quantity || 1 }
                 : card,
             );
