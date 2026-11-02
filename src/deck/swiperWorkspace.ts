@@ -89,6 +89,10 @@ function sameCard(a: { name: string; oracleId?: string }, b: { name: string; ora
     || a.name.toLowerCase() === b.name.toLowerCase();
 }
 
+function sameSelectedPrinting(a: { name: string; oracleId?: string; setCode?: string; collectorNumber?: string }, b: { name: string; oracleId?: string; setCode?: string; collectorNumber?: string }) {
+  return sameCard(a, b) && a.setCode === b.setCode && a.collectorNumber === b.collectorNumber;
+}
+
 export function updatedSwiperDeck(deck: HubDeck, state: DeckState): HubDeck {
   const main = (deck.kind === "wishlist" ? state.wishlist
     : deck.kind === "collection" ? state.owned : state.deck).map((c) => {
@@ -98,7 +102,7 @@ export function updatedSwiperDeck(deck: HubDeck, state: DeckState): HubDeck {
       ...previous,
       ...card,
       quantity: c.quantity || previous?.quantity || 1,
-      section: deck.kind === "deck" && state.commander && sameCard(c, state.commander)
+      section: deck.kind === "deck" && state.commander && sameSelectedPrinting(c, state.commander)
         ? "commander" as const : "main" as const,
     };
   });
