@@ -1750,3 +1750,7 @@ body { margin: 0; padding: 0; }
   .swipe-corner { min-height: 35px; padding: 2px; }
   .swipe-source-row { padding: 1px 8px 4px; }
 }
+
+/* Four distinct, functional collections replace the old two global tabs. */
+.collection-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); padding-left: 10px; padding-right: 10px; }
+.collection-tabs button { min-width: 0; padding: 9px 2px; font-size: clamp(10px, 2.5vw, 13px); }
