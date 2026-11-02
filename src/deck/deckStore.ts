@@ -59,6 +59,8 @@ export interface DeckState {
   addToOwned: (card: DeckCard) => void;
   addToMaybe: (card: DeckCard) => void;
   moveCard: (card: DeckCard, source: CardList | 'recommendations', destination: CardList) => void;
+  assignSection: (card: DeckCard, destination: 'deck' | 'sideboard' | 'maybe') => void;
+  setInterest: (card: DeckCard, status: 'wishlist' | 'owned' | 'none') => void;
   // Backwards-compatible name used by the recommender/search components.
   addToDeck: (card: DeckCard) => void;
   reject: (card: DeckCard) => void;
@@ -248,6 +250,37 @@ export const useDeckStore = create<DeckState>()(
             return moved;
           });
         },
+        assignSection: (card, destination) => set(s => {
+          const sections = ['deck', 'sideboard', 'maybe'] as const;
+          const from = sections.map(key => s[key].find(c => samePrinting(c, card)))
+            .find(Boolean);
+          const placed = from || save(card);
+          const updates: Partial<DeckState> = {};
+          for (const key of sections) {
+            const remaining = s[key].filter(c => !samePrinting(c, card));
+            updates[key] = key === destination
+              ? [placed, ...remaining] : remaining;
+          }
+          updates.commander = destination === 'deck' ? s.commander
+            : s.commander && samePrinting(s.commander, card) ? null : s.commander;
+          updates.configVersion = updates.commander !== s.commander
+            ? s.configVersion + 1 : s.configVersion;
+          updates.rejected = [...new Set([card.oracleId, ...s.rejected])].slice(0, REJECTED_CAP);
+          updates.swipeCount = s.swipeCount + 1;
+          return updates;
+        }),
+        setInterest: (card, status) => set(s => {
+          const previously = [...s.wishlist, ...s.owned].find(c => samePrinting(c, card));
+          const saved = previously || save(card);
+          const wishlist = s.wishlist.filter(c => !samePrinting(c, card));
+          const owned = s.owned.filter(c => !samePrinting(c, card));
+          return {
+            wishlist: status === 'wishlist' ? [saved, ...wishlist] : wishlist,
+            owned: status === 'owned' ? [saved, ...owned] : owned,
+            rejected: [...new Set([card.oracleId, ...s.rejected])].slice(0, REJECTED_CAP),
+            swipeCount: s.swipeCount + 1,
+          };
+        }),
         reject: (card) => {
           set((s) => ({
             rejected: s.rejected.includes(card.oracleId)
