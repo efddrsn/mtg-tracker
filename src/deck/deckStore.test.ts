@@ -30,6 +30,8 @@ beforeEach(() => {
   useDeckStore.setState({
     config: { ...DEFAULT_CONFIG },
     deck: [],
+    wishlist: [],
+    maybe: [],
     owned: [],
     revisions: [],
     commander: null,
@@ -39,13 +41,14 @@ beforeEach(() => {
   });
 });
 
-describe('wishlist collections', () => {
-  it('moves a card between wishlist and owned without duplicates', () => {
+describe('independent deck-scoped collections', () => {
+  it('tracks wishlist and ownership independently of deck membership', () => {
     const solRing = card('Sol Ring');
     useDeckStore.getState().addToWishlist(solRing);
     useDeckStore.getState().addToOwned(solRing);
 
     expect(useDeckStore.getState().deck).toHaveLength(0);
+    expect(useDeckStore.getState().wishlist.map((c) => c.name)).toEqual(['Sol Ring']);
     expect(useDeckStore.getState().owned.map((c) => c.name)).toEqual(['Sol Ring']);
     expect(useDeckStore.getState().isSeen(solRing.oracleId)).toBe(true);
   });
@@ -59,21 +62,52 @@ describe('wishlist collections', () => {
     useDeckStore.getState().addToWishlist(second);
     useDeckStore.getState().restoreRevision(revision.id);
 
-    expect(useDeckStore.getState().deck.map((c) => c.name)).toEqual(['Sol Ring']);
+    expect(useDeckStore.getState().wishlist.map((c) => c.name)).toEqual(['Sol Ring']);
   });
 
   it('updates the selected printing without changing when the card was added', () => {
     const original = card('Sol Ring', 'sol-ring');
     useDeckStore.getState().addToWishlist(original);
-    const addedAt = useDeckStore.getState().deck[0].addedAt;
+    const addedAt = useDeckStore.getState().wishlist[0].addedAt;
     const fancy = { ...original, id: 'fancy', setCode: 'sld', collectorNumber: '999' };
     useDeckStore.getState().updateCardPrinting('wishlist', original.oracleId, fancy);
 
-    expect(useDeckStore.getState().deck[0]).toMatchObject({
+    expect(useDeckStore.getState().wishlist[0]).toMatchObject({
       id: 'fancy',
       setCode: 'sld',
       collectorNumber: '999',
       addedAt,
     });
+  });
+});
+
+describe('pile table decisions', () => {
+  it('moves a card from maybe to the deck without marking it owned', () => {
+    const spell = card('Arcane Signet');
+    useDeckStore.getState().addToMaybe(spell);
+    useDeckStore.getState().moveCard(spell, 'maybe', 'deck');
+    expect(useDeckStore.getState().maybe).toHaveLength(0);
+    expect(useDeckStore.getState().deck.map(c => c.name)).toEqual(['Arcane Signet']);
+    expect(useDeckStore.getState().owned).toHaveLength(0);
+  });
+
+  it('copies an owned card into a deck without losing ownership', () => {
+    const spell = card('Sol Ring');
+    useDeckStore.getState().addToOwned(spell);
+    useDeckStore.getState().moveCard(spell, 'owned', 'deck');
+    expect(useDeckStore.getState().deck).toHaveLength(1);
+    expect(useDeckStore.getState().owned).toHaveLength(1);
+  });
+
+  it('records deck, maybe, wishlist and owned in a restorable revision', () => {
+    const spell = card('Counterspell');
+    useDeckStore.getState().addToDeck(spell);
+    useDeckStore.getState().addToMaybe(card('Mana Leak'));
+    useDeckStore.getState().saveRevision('Antes');
+    useDeckStore.getState().clearList('deck');
+    useDeckStore.getState().clearList('maybe');
+    useDeckStore.getState().restoreRevision(useDeckStore.getState().revisions[0].id);
+    expect(useDeckStore.getState().deck).toHaveLength(1);
+    expect(useDeckStore.getState().maybe).toHaveLength(1);
   });
 });
