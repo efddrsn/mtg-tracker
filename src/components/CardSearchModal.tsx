@@ -33,10 +33,11 @@ export function CardSearchModal({
   const term = query.trim();
   const active = term.length >= 2;
 
-  // Focus the field on open.
+  // Safari only raises the software keyboard reliably for focus driven
+  // by a direct tap. Attempt focus at mount and offer a full-width tappable
+  // input as fallback instead of relying on a delayed timer.
   useEffect(() => {
-    const t = window.setTimeout(() => inputRef.current?.focus(), 120);
-    return () => window.clearTimeout(t);
+    inputRef.current?.focus({ preventScroll: true });
   }, []);
 
   // Debounced search. setState happens only inside the timeout callback, never
@@ -66,7 +67,10 @@ export function CardSearchModal({
         <div className="search-head">
           <input
             ref={inputRef}
-            type="text"
+            autoFocus
+            enterKeyHint="search"
+            inputMode="search"
+            type="search"
             className="search-input"
             placeholder={placeholder}
             value={query}
