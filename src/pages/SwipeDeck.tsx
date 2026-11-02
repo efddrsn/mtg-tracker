@@ -220,6 +220,34 @@ export function SwipeDeck() {
     setDrag({ x: 0, y: 0 });
   }, [feed, loadedId]);
 
+  // Keyboard alternatives to the removed bottom buttons. Controls that edit
+  // text or choose a pile retain their native keyboard handling.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (configOpen || deckOpen || searchOpen || !top) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input,select,textarea,button,[contenteditable="true"]')) return;
+      const destinations: Record<string, SwipeCorner> = {
+        '1': 'nw', '2': 'ne', '3': 'sw', '4': 'se',
+      };
+      if (event.key in destinations) {
+        event.preventDefault();
+        commit(corners[destinations[event.key]]);
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        commit('reject');
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        commit(source === 'recommendations' ? corners.ne : 'keep');
+      } else if (event.key === 'Backspace' || (event.key.toLowerCase() === 'z' && (event.metaKey || event.ctrlKey))) {
+        event.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [configOpen, deckOpen, searchOpen, top, commit, corners, source, undo]);
+
   // --- Pointer gesture handling ---------------------------------------------
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -441,6 +469,7 @@ export function SwipeDeck() {
       </div>
 
       <div
+        key={source}
         className="card-stage swipe-table"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
