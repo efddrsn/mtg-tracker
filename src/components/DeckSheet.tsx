@@ -77,7 +77,7 @@ function CardRow({
       <button
         type="button"
         className="deck-row-remove"
-        onClick={() => remove(list, card.oracleId)}
+        onClick={() => remove(list, card.oracleId, card)}
         aria-label={`Remover ${card.name}`}
       >
         ✕
@@ -218,9 +218,9 @@ export function DeckSheet({ open, dragY, onClose, onReview }: DeckSheetProps) {
                 active === 'maybe' ? 'Nenhuma carta em Talvez.' : 'Nenhuma carta marcada como já tenho.'}</p>
               <p className="deck-empty-hint">Use o gesto diagonal para a direita no feed.</p>
             </div>
-          ) : cards.map((card) => (
+          ) : cards.map((card, index) => (
             <CardRow
-              key={card.oracleId}
+              key={`${card.oracleId}:${card.setCode || ''}:${card.collectorNumber || ''}:${index}`}
               card={card}
               list={active}
               onPreview={setPreview}
