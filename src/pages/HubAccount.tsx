@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   HubLayout,
   panel,
@@ -14,11 +14,20 @@ export function Account() {
   const { user, status, refresh, sync } = useAccount();
   const decks = useHubStore((s) => s.decks);
   const [mode, setMode] = useState<"login" | "signup">("login");
+  const [searchParams] = useSearchParams();
+  const [googleEnabled, setGoogleEnabled] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void api<{ google: boolean }>("auth/providers")
+      .then(({ google }) => { if (active) setGoogleEnabled(google); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(searchParams.get("google") === "error" ? "Não foi possível entrar pelo Google. Tente novamente ou use email e senha." : "");
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -84,6 +93,7 @@ export function Account() {
           <p className="text-sm text-slate-400">{user.email}</p>
           <p className="text-sm">{status}</p>
           <div className="flex flex-wrap gap-2">
+            {googleEnabled && <a className={ghost} href="/api/event/auth/google/start">Vincular ou entrar com Google</a>}
             <button
               className={button}
               disabled={busy}
@@ -130,15 +140,24 @@ export function Account() {
               Criar conta
             </button>
           </div>
+          {googleEnabled ? (
+            <a className={ghost + " w-full gap-3"} href="/api/event/auth/google/start">
+              <span className="text-lg font-bold">G</span> Continuar com Google
+            </a>
+          ) : (
+            <p className="text-xs text-slate-400">Acesso Google disponível após configurar OAuth no servidor.</p>
+          )}
+          <div className="flex items-center gap-3 text-xs text-slate-400">
+            <div className="h-px flex-1 bg-white/10" />ou use email e senha<div className="h-px flex-1 bg-white/10" />
+          </div>
           <form className="space-y-4" onSubmit={(e) => void submit(e)}>
             {mode === "signup" && (
               <label className="block text-sm">
-                Nome
+                Nome (opcional)
                 <input
                   className={field + " mt-2"}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  required
                   autoComplete="name"
                   maxLength={60}
                 />
