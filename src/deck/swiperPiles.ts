@@ -152,6 +152,6 @@ export function fromRecommendationCard(card: DeckCard): HubCard {
     name: card.name, oracleId: card.oracleId,
     setCode: card.setCode, collectorNumber: card.collectorNumber,
     image: card.image || undefined, details: card,
-    quantity: card.quantity || 1, section: "main",
+    quantity: 1, section: "main",
   };
 }
