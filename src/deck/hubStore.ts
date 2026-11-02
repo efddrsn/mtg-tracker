@@ -37,6 +37,7 @@ export type SwipeSession = {
   sideboard?: HubCard[];
   wishlist: HubCard[];
   owned: HubCard[];
+  positive?: HubCard[];
   maybe: HubCard[];
   rejected: string[];
   swipeCount: number;
