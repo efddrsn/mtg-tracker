@@ -110,4 +110,21 @@ describe('pile table decisions', () => {
     expect(useDeckStore.getState().deck).toHaveLength(1);
     expect(useDeckStore.getState().maybe).toHaveLength(1);
   });
+  it('moves, removes and changes only one selected printing, preserving the other', () => {
+    const first = { ...card('Sol Ring', 'shared-oracle'), id: 'a', setCode: 'cmm', collectorNumber: '12' };
+    const second = { ...card('Sol Ring', 'shared-oracle'), id: 'b', setCode: 'cmm', collectorNumber: '13' };
+    useDeckStore.getState().addToDeck(first);
+    useDeckStore.getState().addToDeck(second);
+    expect(useDeckStore.getState().deck).toHaveLength(2);
+    useDeckStore.getState().moveCard(second, 'deck', 'maybe');
+    expect(useDeckStore.getState().deck.map(c => c.id)).toEqual(['a']);
+    expect(useDeckStore.getState().maybe.map(c => c.id)).toEqual(['b']);
+    useDeckStore.getState().updateCardPrinting('deck', first.oracleId,
+      { ...first, id: 'a-new', collectorNumber: '14' }, first);
+    expect(useDeckStore.getState().deck[0].collectorNumber).toBe('14');
+    useDeckStore.getState().removeFromList('maybe', second.oracleId, second);
+    expect(useDeckStore.getState().maybe).toHaveLength(0);
+    expect(useDeckStore.getState().deck).toHaveLength(1);
+  });
+
 });
