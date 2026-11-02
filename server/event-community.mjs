@@ -28,6 +28,9 @@ function reply(res, status, value) {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
   });
   res.end(JSON.stringify(value));
 }
