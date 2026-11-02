@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useHubStore } from '../deck/hubStore';
 import { useNavigate } from 'react-router-dom';
 import { SwipeCard } from '../components/SwipeCard';
 import { ConfigSheet } from '../components/ConfigSheet';
@@ -23,13 +24,14 @@ const FLY_MS = 320;
 
 export function SwipeDeck() {
   const navigate = useNavigate();
+  const activeId=useHubStore(s=>s.activeDeckId);
+  const active=useHubStore(s=>s.decks.find(d=>d.id===s.activeDeckId&&!d.deletedAt));
   const feed = useRecommendationFeed();
   const addToWishlist = useDeckStore((s) => s.addToWishlist);
   const addToOwned = useDeckStore((s) => s.addToOwned);
   const reject = useDeckStore((s) => s.reject);
   const skip = useDeckStore((s) => s.skip);
   const setCommander = useDeckStore((s) => s.setCommander);
-  const clearCommander = useDeckStore((s) => s.clearCommander);
   const removeFromList = useDeckStore((s) => s.removeFromList);
   const wishlistCount = useDeckStore((s) => s.deck.length);
   const ownedCount = useDeckStore((s) => s.owned.length);
@@ -301,10 +303,10 @@ export function SwipeDeck() {
         <button
           type="button"
           className="topbar-btn topbar-tracker"
-          onClick={() => navigate('/')}
-          aria-label="Game tracker"
+          onClick={() => navigate(activeId?'/decks/'+activeId:'/')}
+          aria-label={active?'Voltar ao deck':'Magic Hub'}
         >
-          ⟵ Tracker
+          ⟵ {active?'Meu deck':'Magic Hub'}
         </button>
         <button
           type="button"
@@ -330,7 +332,7 @@ export function SwipeDeck() {
         <button
           type="button"
           className="feed-banner feed-banner-active"
-          onClick={() => { vibrate(10); clearCommander(); }}
+          onClick={() => { vibrate(10); setSearchOpen(true); }}
         >
           <span className="feed-banner-label">⚜ {commander.name}</span>
           <span className="feed-banner-change">change</span>

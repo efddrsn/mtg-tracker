@@ -1,3 +1,6 @@
+import { useNavigate } from 'react-router-dom';
+import { useHubStore, makeDeck, fromCards } from '../deck/hubStore';
+import { copy, download } from '../deck/hubApi';
 import { useRef, useState } from 'react';
 import { useDeckStore, type CardList, type SavedCard } from '../deck/deckStore';
 import { AddCardSearch } from './AddCardSearch';
@@ -83,6 +86,10 @@ function CardRow({
 }
 
 export function DeckSheet({ open, dragY, onClose }: DeckSheetProps) {
+  const navigate=useNavigate();
+  const activeDeck=useHubStore(s=>s.decks.find(d=>d.id===s.activeDeckId&&!d.deletedAt));
+  const [status,setStatus]=useState('');
+  const [manual,setManual]=useState('');
   const wishlist = useDeckStore((s) => s.deck);
   const owned = useDeckStore((s) => s.owned);
   const revisions = useDeckStore((s) => s.revisions);
@@ -98,7 +105,7 @@ export function DeckSheet({ open, dragY, onClose }: DeckSheetProps) {
   const cards = active === 'wishlist' ? wishlist : owned;
 
   const exportList = () => {
-    navigator.clipboard?.writeText(cards.map(listLine).join('\n')).catch(() => {});
+    const text=cards.map(listLine).join('\n');setManual(text);void copy(text).then(setStatus).catch((e:Error)=>setStatus(e.message));
   };
 
   const restore = (id: string) => {
@@ -116,6 +123,8 @@ export function DeckSheet({ open, dragY, onClose }: DeckSheetProps) {
           transition: dragY === 0 ? 'transform 0.3s cubic-bezier(0.22,0.61,0.36,1)' : 'none',
         }}
         role="dialog"
+        aria-modal={open || undefined}
+        inert={!open && dragY===0}
         aria-label="Suas cartas"
       >
         <div className="sheet-grabber" />
@@ -155,7 +164,7 @@ export function DeckSheet({ open, dragY, onClose }: DeckSheetProps) {
               Links de compra
             </button>
           )}
-          <button type="button" onClick={() => clearList(active)} disabled={cards.length === 0}>Limpar</button>
+          <button type="button" onClick={() => {saveRevision('Antes de limpar');clearList(active);setStatus('Lista limpa. Restaure pelo Histórico se precisar.');}} disabled={cards.length === 0}>Limpar</button>
           <details className="revision-menu">
             <summary>Histórico ({revisions.length})</summary>
             <div className="revision-popover">
@@ -174,6 +183,13 @@ export function DeckSheet({ open, dragY, onClose }: DeckSheetProps) {
           </details>
         </div>
 
+        <div className="collection-actions">
+          <button type="button" disabled={!cards.length} onClick={()=>{const current=activeDeck;const additions=fromCards(cards);const d=current?{...current,cards:[...current.cards,...additions.filter(c=>!current.cards.some(old=>old.name===c.name))],updatedAt:Date.now()}:makeDeck(active==='wishlist'?'Minha wishlist':'Minha coleção',additions,active==='wishlist'?'wishlist':'collection');useHubStore.getState().save(d);onClose();navigate('/decks/'+d.id);}}>{activeDeck?'Adicionar escolhas ao deck':'Salvar e compartilhar lista'}</button>
+          <button type="button" disabled={!cards.length} onClick={()=>{download('minhas-cartas.txt',cards.map(listLine).join('\n'));setStatus('Download iniciado.');}}>Baixar TXT</button>
+          <button type="button" onClick={onClose}>Fechar lista</button>
+        </div>
+        {status&&<p role="status" className="px-5 text-xs text-indigo-200">{status}</p>}
+        {manual&&<textarea className="mx-4 rounded bg-black/20 p-2 text-xs" aria-label="Lista do Swiper para copiar" readOnly value={manual} onFocus={e=>e.target.select()}/>}
         <div className="deck-list">
           {cards.length === 0 ? (
             <div className="deck-empty">

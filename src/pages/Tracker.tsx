@@ -410,6 +410,10 @@ export function Tracker() {
                  flex flex-col px-2 pt-2 pb-2`}
       onPointerDown={onScrollPointerDown}
     >
+      <div className="mb-2 flex shrink-0 items-center justify-between text-xs text-text-secondary" data-edit-toolbar>
+        <button className="rounded-lg bg-white/5 px-3 py-2" onClick={()=>navigate('/')}>← Magic Hub</button>
+        <button className="rounded-lg bg-white/5 px-3 py-2" onClick={()=>navigate('/settings')}>Configurações</button>
+      </div>
       {resetFlash && (
         <div
           className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center reset-flash"
