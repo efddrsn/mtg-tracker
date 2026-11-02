@@ -25,6 +25,7 @@ export function swipeSessionFor(deck: HubDeck): SwipeSession {
     ? { ...blank, ...stored.config }
     : blank;
   return {
+    deck: stored?.deck || [],
     wishlist: stored?.wishlist || [],
     owned: stored?.owned || [],
     maybe: stored?.maybe || [],
@@ -47,7 +48,7 @@ export function hydratedDeckState(deck: HubDeck) {
     ...toCard(c), addedAt: Date.now(), quantity: c.quantity,
   }));
   const loadedCards = asSaved(cards);
-  const loadedDeck = isDeck ? loadedCards : [];
+  const loadedDeck = isDeck ? loadedCards : asSaved(session.deck || []);
   const owned = deck.kind === "collection" ? loadedCards : asSaved(session.owned);
   const rejected = [...new Set([
     ...session.rejected, ...loadedCards.map(c => c.oracleId),
@@ -107,6 +108,7 @@ export function updatedSwiperDeck(deck: HubDeck, state: DeckState): HubDeck {
   const swiper: SwipeSession = {
     ...base,
     config: state.config,
+    deck: fromCards(state.deck),
     wishlist: fromCards(state.wishlist),
     maybe: fromCards(state.maybe),
     owned: fromCards(state.owned),
