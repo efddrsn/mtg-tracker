@@ -13,8 +13,8 @@ export type HubCard = {
   collectorNumber?: string;
   details?: DeckCard;
 };
-export type SwipePile = "deck" | "sideboard" | "maybe" | "wishlist" | "owned";
-export type SwipeSource = "recommendations" | SwipePile;
+export type SwipePile = "deck" | "sideboard" | "maybe" | "wishlist" | "owned" | "none";
+export type SwipeSource = "recommendations" | Exclude<SwipePile, "none">;
 export type SwipeCorner = "nw" | "ne" | "sw" | "se";
 export type SwipeSession = {
   deck?: HubCard[];
@@ -27,6 +27,9 @@ export type SwipeSession = {
   revisions?: ListRevision[];
   config: DeckConfig;
   corners: Record<SwipeCorner, SwipePile>;
+  sortingMode?: "section" | "status";
+  sectionCorners?: Record<SwipeCorner, SwipePile>;
+  statusCorners?: Record<SwipeCorner, SwipePile>;
   source: SwipeSource;
   reviewIndex: number;
 };
