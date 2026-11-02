@@ -22,6 +22,7 @@ export interface SwiperPileDefinition {
   /** Angle in degrees, clockwise from the top of the radial menu. */
   angle: number;
   visible: boolean;
+  deleted?: boolean;
   /** Piles sharing a group are mutually exclusive for each printing. */
   linkedGroup?: string;
   /** RHS destinations can feed positive recommendation context. */
