@@ -36,8 +36,8 @@ const FLY_MS = 320;
 export function SwipeDeck() {
   const navigate = useNavigate();
   const activeId=useHubStore(s=>s.activeDeckId);
-  const decks=useHubStore(s=>s.decks.filter(d=>!d.deletedAt));
-  const active=useHubStore(s=>s.decks.find(d=>d.id===s.activeDeckId&&!d.deletedAt));
+  const allDecks=useHubStore(s=>s.decks);
+  const decks=allDecks.filter(d=>!d.deletedAt);
   const feed = useRecommendationFeed();
   const moveCard = useDeckStore((s) => s.moveCard);
   const reject = useDeckStore((s) => s.reject);
@@ -373,24 +373,36 @@ export function SwipeDeck() {
         <button
           type="button"
           className="topbar-btn topbar-tracker"
-          onClick={() => navigate(activeId?'/decks/'+activeId:'/')}
-          aria-label={active?'Voltar ao deck':'Magic Hub'}
+          onClick={() => navigate(activeId?'/decks/'+activeId:'/decks')}
+          aria-label="Voltar aos meus decks"
         >
-          ⟵ {active?'Meu deck':'Magic Hub'}
+          ⟵
         </button>
+        <select
+          className="swipe-workspace-select"
+          aria-label="Deck ou lista em uso"
+          value={loadedId || ''}
+          onChange={e => {
+            const selected = decks.find(d => d.id === e.target.value);
+            if (selected) openWorkspace(selected);
+          }}
+        >
+          {decks.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
+        </select>
+        <button className="topbar-btn" type="button" onClick={createWorkspace} aria-label="Criar novo deck">+</button>
         <button
           type="button"
           className="topbar-btn deck-pill"
           onClick={() => setDeckOpen(true)}
           aria-label="Deck"
         >
-          ♡ {wishlistCount} · ✓ {ownedCount}
+          {deckCount} deck · ♡ {wishlistCount}
         </button>
       </header>
 
-      {!pickingCommander && <div className="px-4 py-1 text-center text-[10px] text-text-dim" role="status">{feed.loading&&!top?'Buscando sinergias…':feed.source==='model'?'Sinergia com seu deck · Recommander':feed.source==='commander-top-picks'?'Top picks do comandante · sinergia temporariamente indisponível':'Populares no formato · sem recomendação personalizada'}</div>}
+      {source === 'recommendations' && !pickingCommander && <div className="swipe-feed-status" role="status">{feed.loading&&!top?'Buscando sinergias…':feed.source==='model'?'Sinergias do deck':feed.source==='commander-top-picks'?'Sugestões do comandante':'Recomendações gerais'}</div>}
       {/* Context banner: what the feed is currently doing */}
-      {pickingCommander ? (
+      {source === 'recommendations' && pickingCommander ? (
         <button
           type="button"
           className="feed-banner feed-banner-commander"
@@ -399,7 +411,7 @@ export function SwipeDeck() {
           ⚜ Choose your commander
           <span className="feed-banner-change">🔍 search</span>
         </button>
-      ) : commander ? (
+      ) : source === 'recommendations' && commander ? (
         <button
           type="button"
           className="feed-banner feed-banner-active"
@@ -410,26 +422,64 @@ export function SwipeDeck() {
         </button>
       ) : null}
 
+      <div className="swipe-source-row">
+        <select
+          value={source}
+          aria-label="Pilha central"
+          onChange={e => chooseSource(e.target.value as SwipeSource)}
+        >
+          {SOURCE_OPTIONS.map(option => (
+            <option key={option.id} value={option.id}>
+              {option.title} {option.id === 'recommendations' ? '∞' : collections[option.id].length}
+            </option>
+          ))}
+        </select>
+        <span className="swipe-source-progress">
+          {source === 'recommendations' ? '∞' : `${Math.min(reviewIndex + 1, reviewCards.length)} / ${reviewCards.length}`}
+        </span>
+        <button type="button" className="swipe-edit-deck" onClick={() => navigate('/decks/' + activeId)}>Editar</button>
+      </div>
+
       <div
-        className="card-stage"
+        className="card-stage swipe-table"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endGesture}
         onPointerCancel={endGesture}
       >
         {renderStack()}
+        {CORNERS.map(corner => (
+          <div className={`swipe-corner swipe-corner-${corner.id}`} key={corner.id}
+            onPointerDown={e => e.stopPropagation()}
+            onPointerMove={e => e.stopPropagation()}
+            onPointerUp={e => e.stopPropagation()}
+          >
+            <select
+              aria-label={`Destino: ${corner.title}`}
+              value={corners[corner.id]}
+              onChange={e => chooseCorner(corner.id, e.target.value as SwipePile)}
+            >
+              {PILES.map(pile => <option key={pile.id} value={pile.id}>{pile.title}</option>)}
+            </select>
+            <span>{collections[corners[corner.id]].length}</span>
+          </div>
+        ))}
         {top && Math.abs(drag.x) > 8 && (
           <div
             className={`swipe-decision-overlay ${drag.x > 0 ? 'swipe-decision-positive' : 'swipe-decision-negative'}`}
             style={{ opacity: Math.min(1, Math.abs(drag.x) / 100) }}
             aria-hidden="true"
           >
-            {drag.x < 0 ? 'PASSAR' : pickingCommander ? 'COMANDANTE' : drag.y > 0 ? 'JÁ TENHO' : 'WISHLIST'}
+            {Math.abs(drag.y) > 35
+              ? PILES.find(p => p.id === corners[drag.y < 0
+                ? (drag.x < 0 ? 'nw' : 'ne')
+                : (drag.x < 0 ? 'sw' : 'se')])?.title
+              : drag.x < 0 ? 'PASSAR' : source !== 'recommendations' ? 'MANTER' : 'WISHLIST'}
           </div>
         )}
 
         {/* Edge hints — suppressed when a context banner occupies that edge */}
-        <div className="swipe-hint swipe-hint-top">▼ filters</div>
+        <div className="swipe-hint swipe-hint-top">▼ filtros</div>
         {!pickingCommander && !commander && (
           <div className="swipe-hint swipe-hint-bottom">▲ deck</div>
         )}
