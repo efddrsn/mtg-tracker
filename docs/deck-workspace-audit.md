@@ -81,3 +81,8 @@ Production runtime logs confirmed that the old website endpoint returned HTML an
 The current [official API documentation](https://recommander.cards/api/) specifies `https://api.recommander.cards/public-release/api/decks/recommend/top`, a `result_code`/`data` envelope and up to 200 suggestions. A direct request for Urza returned 85 ranked results rather than the website route's 25. The public score has no fixed range and is only comparable within one response.
 
 Final implementation uses this official endpoint, unwraps its envelope, preserves raw scores when no legacy metadata exists, deduplicates concurrent identical requests, caches identical deck queries, debounces new selections and honors upstream rate-limit errors. The live page scraper is removed. The UI labels a model feed separately from general-popularity fallback; no card-type/color grouping or arbitrary random shuffle is introduced. The configurable pile table is recorded in `swiper-table-backlog.md`.
+
+
+The official live Meren evaluation returned 86 cold-start candidates and 147 with ten sacrifice/reanimator seed cards. It found 13 diagnostic synergy matches in the top 25, with no selected-card leaks. These are diagnostic observations, not a universal quality score. Tracker life/mana/storm increment/decrement, settings navigation and return to Hub also passed in the browser.
+
+![Published home and deck continuity](qa/hub-home.jpg)
