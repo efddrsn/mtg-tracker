@@ -9,6 +9,33 @@ export const DEFAULT_CORNERS: Record<SwipeCorner, SwipePile> = {
   se: "owned",
 };
 
+/** Deck is the containing workspace, never a visible swipe destination.
+ * Preserve old pile data but safely migrate legacy corner assignments to the
+ * three actual user piles (Maybe, Wishlist, Collection). Discard stays fixed. */
+export function normalizedDestinations(saved?: Partial<Record<SwipeCorner, SwipePile>>): Record<SwipeCorner, SwipePile> {
+  const slots: Array<"nw" | "ne" | "se"> = ["nw", "ne", "se"];
+  const allowed: SwipePile[] = ["maybe", "wishlist", "owned"];
+  const result: Record<SwipeCorner, SwipePile> = { ...DEFAULT_CORNERS, sw: "deck" };
+  const used = new Set<SwipePile>();
+  for (const slot of slots) {
+    const choice = saved?.[slot];
+    if (choice && allowed.includes(choice) && !used.has(choice)) {
+      result[slot] = choice;
+      used.add(choice);
+    } else {
+      result[slot] = "deck"; // sentinel until all valid positions are claimed
+    }
+  }
+  for (const slot of slots) {
+    if (result[slot] !== "deck") continue;
+    const preferred = DEFAULT_CORNERS[slot];
+    const replacement = !used.has(preferred) ? preferred : allowed.find(p => !used.has(p))!;
+    result[slot] = replacement;
+    used.add(replacement);
+  }
+  return result;
+}
+
 const FORMAT_TO_CODE: Record<string, DeckFormat> = {
   Commander: "commander", Modern: "modern", Standard: "standard",
   Historic: "historic", Brawl: "standardbrawl", Pioneer: "pioneer",
@@ -33,9 +60,9 @@ export function swipeSessionFor(deck: HubDeck): SwipeSession {
     swipeCount: stored?.swipeCount || 0,
     revisions: stored?.revisions || [],
     config,
-    source: stored?.source || "recommendations",
-    reviewIndex: stored?.reviewIndex || 0,
-    corners: { ...DEFAULT_CORNERS, ...stored?.corners },
+    source: stored?.source === "deck" ? "recommendations" : stored?.source || "recommendations",
+    reviewIndex: stored?.source === "deck" ? 0 : stored?.reviewIndex || 0,
+    corners: normalizedDestinations(stored?.corners),
   };
 }
 
