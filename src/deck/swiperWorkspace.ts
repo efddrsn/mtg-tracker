@@ -1,6 +1,7 @@
 import { DEFAULT_CONFIG, type DeckFormat } from "./scryfall";
 import { useDeckStore, type DeckState, type SavedCard } from "./deckStore";
 import { fromCards, makeDeck, toCard, useHubStore, type HubDeck, type HubCard, type SwipeCorner, type SwipePile, type SwipeSession } from "./hubStore";
+import { normalizePiles } from "./swiperPiles";
 
 export type SortMode = "section" | "status";
 const SECTION_PILES: SwipePile[] = ["deck", "sideboard", "maybe"];
@@ -60,6 +61,8 @@ export function swipeSessionFor(deck: HubDeck): SwipeSession {
     sideboard: stored?.sideboard || [],
     wishlist: stored?.wishlist || [],
     owned: stored?.owned || [],
+    positive: stored?.positive || [],
+    piles: normalizePiles(stored?.piles),
     maybe: stored?.maybe || [],
     rejected: stored?.rejected || [],
     swipeCount: stored?.swipeCount || 0,
@@ -97,6 +100,7 @@ export function hydratedDeckState(deck: HubDeck) {
   const owned = asSaved(session.owned.length
     ? session.owned
     : deck.kind === "collection" ? deck.cards : []);
+  const positive = asSaved(session.positive || []);
   const rejected = [...new Set([
     ...session.rejected, ...loadedDeck.map(c => c.oracleId),
     ...sideboard.map(c => c.oracleId), ...maybe.map(c => c.oracleId),
@@ -108,6 +112,7 @@ export function hydratedDeckState(deck: HubDeck) {
     wishlist,
     maybe,
     owned,
+    positive,
     commander,
     rejected,
     swipeCount: session.swipeCount,
@@ -177,6 +182,7 @@ export function updatedSwiperDeck(deck: HubDeck, state: DeckState): HubDeck {
     wishlist: fromCards(state.wishlist),
     maybe: asHubCards(state.maybe, "maybe"),
     owned: fromCards(state.owned),
+    positive: fromCards(state.positive),
     rejected: state.rejected.slice(0, 4000),
     swipeCount: state.swipeCount,
     revisions: state.revisions.slice(0, 12),
@@ -194,7 +200,7 @@ export function persistSwiperDeck(deckId: string) {
   hub.save(updatedSwiperDeck(deck, useDeckStore.getState()));
 }
 
-export function configureSwiperDeck(deckId: string, patch: Partial<Pick<SwipeSession, "corners" | "source" | "reviewIndex" | "sortingMode" | "sectionCorners" | "statusCorners">>) {
+export function configureSwiperDeck(deckId: string, patch: Partial<Pick<SwipeSession, "corners" | "source" | "reviewIndex" | "sortingMode" | "sectionCorners" | "statusCorners" | "piles">>) {
   const hub = useHubStore.getState();
   const deck = hub.decks.find(d => d.id === deckId && !d.deletedAt);
   if (!deck) return;
