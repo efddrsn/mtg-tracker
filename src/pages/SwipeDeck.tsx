@@ -270,11 +270,11 @@ export function SwipeDeck() {
   // text or choose a pile retain their native keyboard handling.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (configOpen || deckOpen || searchOpen || !top) return;
+      if (configOpen || deckOpen || searchOpen || repositioning || !top) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest('input,select,textarea,button,[contenteditable="true"]')) return;
       const destinations: Record<string, SwipeCorner> = {
-        '1': 'nw', '2': 'ne', '3': 'sw', '4': 'se',
+        '1': 'nw', '2': 'ne', '3': 'se',
       };
       if (event.key in destinations) {
         event.preventDefault();
@@ -294,7 +294,7 @@ export function SwipeDeck() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [configOpen, deckOpen, searchOpen, top, commit, corners, source, undo]);
+  }, [configOpen, deckOpen, searchOpen, repositioning, top, commit, corners, source, undo]);
 
   // --- Pointer gesture handling ---------------------------------------------
 
@@ -524,14 +524,9 @@ export function SwipeDeck() {
                   const next=e.target.value as SwipePile;
                   const old=corners[c.id];
                   const other=(['nw','ne','se'] as SwipeCorner[]).find(key=>key!==c.id && corners[key]===next);
-                  if(other){ chooseCorner(c.id,next); window.queueMicrotask(()=> {
-                    const current=useHubStore.getState().decks.find(d=>d.id===loadedId);
-                    const latest=current?.swiper?.corners || corners;
-                    const rearranged={...latest,[c.id]:next,[other]:old};
-                    setCorners(rearranged);
-                    if(loadedId) configureSwiperDeck(loadedId,{corners:rearranged});
-                  }); }
-                  else chooseCorner(c.id,next);
+                  const rearranged={...corners,[c.id]:next,...(other?{[other]:old}:{})};
+                  setCorners(rearranged);
+                  if(loadedId) configureSwiperDeck(loadedId,{corners:rearranged});
                 }}>
                   {PILES.map(p=><option value={p.id} key={p.id}>{p.title}</option>)}
                 </select>
