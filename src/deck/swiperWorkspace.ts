@@ -144,9 +144,33 @@ export function configureSwiperDeck(deckId: string, patch: Partial<Pick<SwipeSes
 export function ensureSwiperWorkspace() {
   const hub = useHubStore.getState();
   const active = hub.decks.find(d => d.id === hub.activeDeckId && !d.deletedAt);
-  if (active) return active;
-  // Preserve the original global Wishlist / Owned on the first transition.
   const original = useDeckStore.getState();
+  if (active) {
+    // The former global Swiper belonged to the last active deck. Keep its
+    // historic wishlist/owned and revision snapshots instead of overwriting
+    // them on the first deck-scoped visit.
+    if (!active.swiper && !hub.decks.some(d => !!d.swiper) &&
+        (original.wishlist.length || original.owned.length || original.maybe.length)) {
+      const migrated: HubDeck = {
+        ...active,
+        swiper: {
+          ...swipeSessionFor(active),
+          wishlist: fromCards(original.wishlist),
+          owned: fromCards(original.owned),
+          maybe: fromCards(original.maybe),
+          rejected: [...original.rejected],
+          revisions: original.revisions,
+          swipeCount: original.swipeCount,
+          config: original.config,
+        },
+        updatedAt: Math.max(Date.now(), active.updatedAt + 1),
+      };
+      hub.save(migrated);
+      return migrated;
+    }
+    return active;
+  }
+  // Preserve the original global Wishlist / Owned on the first transition.
   const list = makeDeck("Minhas descobertas", fromCards(original.wishlist || []), "wishlist");
   list.swiper = {
     ...swipeSessionFor(list),
