@@ -11,10 +11,6 @@ interface SwipeCardProps {
   animate: boolean;
   // Stacking position: 0 = top, 1 = behind, etc.
   depth: number;
-  // Whether this card receives the live overlay tint.
-  interactive: boolean;
-  // Label shown on the right-swipe badge (e.g. "ADD" or "COMMANDER").
-  addLabel?: string;
 }
 
 // Visual rotation follows horizontal drag, Tinder-style.
@@ -28,8 +24,6 @@ export function SwipeCard({
   dy,
   animate,
   depth,
-  interactive,
-  addLabel = 'ADD',
 }: SwipeCardProps) {
   const [flipped, setFlipped] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -39,18 +33,6 @@ export function SwipeCard({
   const scale = depth === 0 ? 1 : 1 - depth * 0.05;
   const translateY = depth === 0 ? dy : depth * 14 + dy * 0.4;
   const translateX = depth === 0 ? dx : 0;
-
-  // Right-up and right-down are two distinct positive decisions. Keeping the
-  // labels visible during the drag makes the diagonal gesture discoverable.
-  const rightOpacity = interactive ? Math.max(0, Math.min(1, dx / 110)) : 0;
-  const commanderMode = addLabel === 'COMMANDER';
-  const wishOpacity = commanderMode
-    ? rightOpacity
-    : rightOpacity * Math.max(0, Math.min(1, (-dy + 34) / 78));
-  const ownedOpacity = commanderMode
-    ? 0
-    : rightOpacity * Math.max(0, Math.min(1, (dy + 34) / 78));
-  const nopeOpacity = interactive ? Math.max(0, Math.min(1, -dx / 110)) : 0;
 
   return (
     <div
@@ -81,25 +63,6 @@ export function SwipeCard({
         )}
 
         {!loaded && img && <div className="swipe-card-skeleton" />}
-
-        {/* Decision overlays */}
-        {commanderMode ? (
-          <div className="swipe-badge swipe-badge-add swipe-badge-wide" style={{ opacity: wishOpacity }}>
-            COMMANDER
-          </div>
-        ) : (
-          <>
-            <div className="swipe-badge swipe-badge-wishlist" style={{ opacity: wishOpacity }}>
-              WISHLIST ↗
-            </div>
-            <div className="swipe-badge swipe-badge-owned" style={{ opacity: ownedOpacity }}>
-              JÁ TENHO ↘
-            </div>
-          </>
-        )}
-        <div className="swipe-badge swipe-badge-nope" style={{ opacity: nopeOpacity }}>
-          NOPE
-        </div>
 
         {/* Double-faced flip control */}
         {card.backImage && depth === 0 && (

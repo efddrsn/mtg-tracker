@@ -7,6 +7,7 @@ import {
   scrypt as scryptCallback,
 } from "node:crypto";
 import { promisify } from "node:util";
+import { googleAvailable, beginGoogle, exchangeGoogle, clearGoogleCookie } from "./google-auth.mjs";
 const scrypt = promisify(scryptCallback);
 
 const dataDir = process.env.EVENT_DATA_DIR || "/data";
@@ -27,6 +28,9 @@ function reply(res, status, value) {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
   });
   res.end(JSON.stringify(value));
 }
@@ -76,6 +80,7 @@ async function readBody(req) {
   }
 }
 function permitted(req) {
+  if (req.headers["sec-fetch-site"] === "cross-site") return false;
   const origin = req.headers.origin;
   if (!origin) return true;
   try {
@@ -194,6 +199,55 @@ function cookie(req, token, age = 2592000) {
 
 export async function handleEventApi(req, res, pathname) {
   try {
+    if (req.method === "GET" && pathname === "/api/event/auth/providers")
+      return reply(res, 200, { google: googleAvailable });
+    if (req.method === "GET" && pathname === "/api/event/auth/google/start") {
+      return beginGoogle(req, res);
+    }
+    if (req.method === "GET" && pathname === "/api/event/auth/google/callback") {
+      try {
+        const profile = await exchangeGoogle(req);
+        const token = randomBytes(32).toString("hex");
+        await mutate((data) => {
+          let user = data.users.find((u) => u.googleSub === profile.googleSub);
+          if (!user) {
+            user = data.users.find((u) => u.email === profile.email);
+            if (user) {
+              // Non-Google email domains can change owners. Linking them requires
+              // an existing authenticated session for the same local account.
+              if (user.googleSub || (!profile.authoritativeEmail &&
+                  sessionUser(req, data)?.id !== user.id))
+                throw Object.assign(new Error("Use sua senha para vincular esta conta Google."), { status: 409 });
+              user.googleSub = profile.googleSub;
+            } else {
+              user = {
+                id: randomBytes(12).toString("hex"),
+                name: clean(profile.name, 60) || profile.email.split("@")[0],
+                email: profile.email,
+                googleSub: profile.googleSub,
+                decks: [],
+                createdAt: new Date().toISOString(),
+              };
+              data.users.push(user);
+            }
+          }
+          data.sessions = data.sessions.filter((s) => s.expires > Date.now());
+          data.sessions.push({
+            hash: hash(token), userId: user.id,
+            expires: Date.now() + 2592000000,
+          });
+        });
+        res.setHeader("Set-Cookie", [clearGoogleCookie(req), cookie(req, token)]);
+        res.writeHead(302, { Location: "/account?google=success", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+        res.end();
+      } catch (err) {
+        console.warn("google_oauth_error", err instanceof Error ? err.message : "unknown");
+        res.setHeader("Set-Cookie", clearGoogleCookie(req));
+        res.writeHead(302, { Location: "/account?google=error", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+        res.end();
+      }
+      return;
+    }
     if (req.method === "GET" && pathname === "/api/event/health") {
       return reply(res, 200, { ok: true, storage: dataDir });
     }
@@ -311,11 +365,7 @@ export async function handleEventApi(req, res, pathname) {
               new Error("Não foi possível criar a conta. Tente entrar."),
               { status: 409 },
             );
-          const name = clean(body.name, 60);
-          if (!name)
-            throw Object.assign(new Error("Informe seu nome."), {
-              status: 400,
-            });
+          const name = clean(body.name, 60) || mail.split("@")[0].slice(0, 60);
           const salt = randomBytes(16).toString("hex");
           const derived = (await scrypt(password, salt, 64)).toString("hex");
           user = {

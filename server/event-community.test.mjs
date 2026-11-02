@@ -233,6 +233,19 @@ test("accounts isolate workspaces, persist latest revisions, and invalidate logo
   );
 });
 
+test("signup accepts an optional name while keeping credentials private", async () => {
+  const created = await call("/api/event/auth/signup", "POST", {
+    email: "noname@example.com",
+    password: "safe-test-password-2026",
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.json.user.name, "noname");
+  assert.equal(created.json.user.passwordHash, undefined);
+  const providers = await call("/api/event/auth/providers");
+  assert.equal(providers.status, 200);
+  assert.equal(typeof providers.json.google, "boolean");
+});
+
 test("share payload limits are explicit rather than silently losing cards", async () => {
   const result = await call("/api/event/shares", "POST", {
     title: "Too big",
