@@ -97,8 +97,8 @@ export function EventHub() {
             {
               to: "/print",
               icon: "▤",
-              title: "Print Binder",
-              desc: "Leve seu deck, escolha versões e gere PDFs.",
+              title: "Print Studio",
+              desc: "Abra seus decks e listas, escolha versões e gere PDFs.",
             },
             {
               to: "/community",
@@ -543,7 +543,7 @@ export function PrintBinder() {
       </div>
       <iframe
         ref={frame}
-        title="Print Binder"
+        title="Print Studio"
         src="/binder/"
         onLoad={() => {
           const doc = frame.current?.contentDocument;
