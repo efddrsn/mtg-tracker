@@ -6,7 +6,7 @@ import type { ListRevision } from "./deckStore";
 export type HubCard = {
   name: string;
   quantity: number;
-  section: "main" | "commander" | "sideboard";
+  section: "main" | "commander" | "sideboard" | "maybe";
   image?: string;
   oracleId?: string;
   setCode?: string;
@@ -29,10 +29,19 @@ export type SwipeSession = {
   source: SwipeSource;
   reviewIndex: number;
 };
+export type ListLabel = "none" | "wishlist" | "collection";
+export function labelOf(deck: HubDeck): ListLabel {
+  return deck.label ?? (deck.kind === "wishlist" ? "wishlist" : deck.kind === "collection" ? "collection" : "none");
+}
+export const LABEL_NAMES: Record<ListLabel, string> = {
+  none: "Nenhum", wishlist: "Wishlist", collection: "Coleção",
+};
 export type HubDeck = {
   id: string;
   title: string;
   kind: "deck" | "wishlist" | "collection";
+  // Independent classification; legacy kind stays for Swiper compatibility.
+  label?: ListLabel;
   format: string;
   nickname: string;
   cards: HubCard[];
@@ -111,7 +120,7 @@ export function validDeck(d: unknown): d is HubDeck {
         Number.isInteger(c.quantity) &&
         c.quantity > 0 &&
         c.quantity <= 999 &&
-        ["main", "sideboard", "commander"].includes(c.section),
+        ["main", "sideboard", "commander", "maybe"].includes(c.section),
     )
   );
 }
@@ -125,6 +134,7 @@ export function makeDeck(
     title,
     cards,
     kind,
+    label: kind === "wishlist" ? "wishlist" : kind === "collection" ? "collection" : "none",
     format: "Commander",
     nickname: useHubStore.getState().nickname,
     createdAt: Date.now(),
@@ -158,8 +168,12 @@ export function parseHubList(text: string): HubCard[] {
       section = "main";
       continue;
     }
-    if (["sideboard", "side", "maybeboard"].includes(heading)) {
+    if (["sideboard", "side"].includes(heading)) {
       section = "sideboard";
+      continue;
+    }
+    if (["maybe", "maybeboard", "considering"].includes(heading)) {
+      section = "maybe";
       continue;
     }
     if (/^(\/\/|#)/.test(line)) continue;
@@ -205,6 +219,7 @@ export function listText(cards: HubCard[], versions = true): string {
     ["commander", "Commander"],
     ["main", "Deck"],
     ["sideboard", "Sideboard"],
+    ["maybe", "Maybeboard"],
   ];
   return groups
     .filter(([s]) => cards.some((c) => c.section === s))
