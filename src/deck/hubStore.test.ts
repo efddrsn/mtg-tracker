@@ -70,3 +70,19 @@ it("normalizes Binder input into repeated unprefixed printing lines", async () =
     ),
   ).toBe("Urza (MH1) 75\nIsland (ELD) 254\nIsland (ELD) 254");
 });
+
+describe("orthogonal deck labels and card zones", () => {
+  it("defaults to none and preserves legacy wishlist classification", async () => {
+    const { labelOf } = await import("./hubStore");
+    expect(labelOf(makeDeck("Deck"))).toBe("none");
+    expect(labelOf(makeDeck("Wish", [], "wishlist"))).toBe("wishlist");
+    expect(labelOf({ ...makeDeck("Custom"), label: "collection" })).toBe("collection");
+  });
+  it("round trips Main, Side and Maybe without loss of quantities", () => {
+    const content = "Commander\n1 Urza\n\nMain\n33 Island\n\nSide\n2 Negate\n\nMaybe\n3 Counterspell";
+    const result = parseHubList(content);
+    expect(result.map(c=>c.section)).toEqual(["commander","main","sideboard","maybe"]);
+    expect(parseHubList(listText(result))).toEqual(result);
+    expect(validDeck({...makeDeck("Typed"),cards:result})).toBe(true);
+  });
+});
