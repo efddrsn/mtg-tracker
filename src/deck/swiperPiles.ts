@@ -50,14 +50,14 @@ export function normalizePiles(stored?: SwiperPileDefinition[]): SwiperPileDefin
 
 /** Conflicts are hidden, never deleted; newest positioned pile wins. */
 export function resolveVisibility(piles: SwiperPileDefinition[]): SwiperPileDefinition[] {
-  const visible = [...piles].filter(p => p.visible)
+  const visible = [...piles].filter(p => p.visible && !p.deleted)
     .sort((a, b) => b.updatedAt - a.updatedAt);
   const accepted: SwiperPileDefinition[] = [];
   for (const pile of visible) {
     if (accepted.every(p => angularDistance(p.angle, pile.angle) >= RADIAL_GAP)) accepted.push(pile);
   }
   const ids = new Set(accepted.map(p => p.id));
-  return piles.map(p => ({ ...p, visible: p.visible && ids.has(p.id) }));
+  return piles.map(p => ({ ...p, visible: p.visible && !p.deleted && ids.has(p.id) }));
 }
 
 /** Display all linked piles by default, moving the most recently edited member
@@ -115,7 +115,7 @@ export function aggregateTaggedCards(decks: HubDeck[], tag: string): HubCard[] {
   const unique = new Map<string, HubCard>();
   for (const d of decks.filter(d => !d.deletedAt)) {
     const piles = normalizePiles(d.swiper?.piles);
-    for (const pile of piles.filter(p => p.tag === tag.toLowerCase())) {
+    for (const pile of piles.filter(p => !p.deleted && p.tag === tag.toLowerCase())) {
       const cards = pile.cards || (pile.id === "deck"
         ? d.cards.filter(c => ["main", "commander"].includes(c.section))
         : pile.id === "sideboard" ? d.cards.filter(c => c.section === "sideboard")
@@ -141,7 +141,7 @@ export function findRadialTarget(piles: SwiperPileDefinition[], x: number, y: nu
   // Fixed discard sector to the left and down-left of the card.
   if (x < -18 && (y >= -25 || y > Math.abs(x) * .3)) return "reject";
   const angle = pileAngle(Math.atan2(x, -y) * 180 / Math.PI);
-  const candidates = piles.filter(p => p.visible)
+  const candidates = piles.filter(p => p.visible && !p.deleted)
     .map(p => ({ p, delta: angularDistance(p.angle, angle) }))
     .sort((a, b) => a.delta - b.delta);
   return candidates[0] && candidates[0].delta <= 28 ? candidates[0].p.id : null;
