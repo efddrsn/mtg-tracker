@@ -11,6 +11,7 @@ import {
 
 export interface SavedCard extends DeckCard {
   addedAt: number;
+  quantity?: number;
 }
 
 export type CardList = 'deck' | 'wishlist' | 'owned' | 'maybe';
