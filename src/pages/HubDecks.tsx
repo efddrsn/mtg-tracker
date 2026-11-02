@@ -19,6 +19,9 @@ import {
   listText,
   fromCards,
   toCard,
+  labelOf,
+  LABEL_NAMES,
+  type ListLabel,
 } from "../deck/hubStore";
 import type { HubDeck, HubCard } from "../deck/hubStore";
 import { api, copy, download, publish, useAccount } from "../deck/hubApi";
@@ -31,6 +34,8 @@ export function MyDecks() {
   const decks = useHubStore((s) => s.decks);
   const [query, setQuery] = useState("");
   const [trash, setTrash] = useState(false);
+  const [groupBy, setGroupBy] = useState<"list" | "label">("list");
+  const [sortBy, setSortBy] = useState<"updated" | "name" | "cards">("updated");
   const [message, setMessage] = useState("");
   const user = useAccount((s) => s.user);
   const navigate = useNavigate();
@@ -79,7 +84,14 @@ export function MyDecks() {
           .toLowerCase()
           .includes(query.toLowerCase()),
     )
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+    .sort((a, b) => sortBy === "name" ? a.title.localeCompare(b.title)
+      : sortBy === "cards" ? b.cards.reduce((n,c)=>n+c.quantity,0) - a.cards.reduce((n,c)=>n+c.quantity,0)
+      : b.updatedAt - a.updatedAt);
+  const groups = groupBy === "list"
+    ? [{ title: "Decks e listas", entries: visible }]
+    : (["wishlist", "collection", "none"] as ListLabel[]).map(label => ({
+        title: LABEL_NAMES[label], entries: visible.filter(d => labelOf(d) === label),
+      })).filter(group => group.entries.length);
   async function restore(d: HubDeck) {
     try {
       if (d.shareId)
@@ -181,8 +193,26 @@ export function MyDecks() {
           )}
         </div>
       )}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {visible.map((d) => (
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="text-xs text-slate-400">Agrupar
+          <select className={field + " mt-1"} value={groupBy} onChange={e=>setGroupBy(e.target.value as typeof groupBy)}>
+            <option value="list">Por lista/deck</option>
+            <option value="label">Por classificação</option>
+          </select>
+        </label>
+        <label className="text-xs text-slate-400">Ordenar
+          <select className={field + " mt-1"} value={sortBy} onChange={e=>setSortBy(e.target.value as typeof sortBy)}>
+            <option value="updated">Mais recente</option>
+            <option value="name">Nome A–Z</option>
+            <option value="cards">Número de cartas</option>
+          </select>
+        </label>
+        <Link className={ghost} to="/print">Escolher versões e imprimir</Link>
+      </div>
+      {groups.map(group => <section key={group.title} className="space-y-3">
+        <h2 className="text-sm font-semibold text-indigo-200">{group.title}</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+        {group.entries.map((d) => (
           <article key={d.id} className={panel + " flex gap-4"}>
             {d.cards.find((c) => c.image)?.image && (
               <img
@@ -193,7 +223,15 @@ export function MyDecks() {
               />
             )}
             <div className="min-w-0 flex-1">
-              <h2 className="break-words text-lg font-semibold">{d.title}</h2>
+              <h3 className="break-words text-lg font-semibold">{d.title}</h3>
+              {!trash && <label className="block text-xs text-slate-400">Classificação
+                <select className={field + " mt-1 !py-1"} value={labelOf(d)}
+                  onChange={e=>useHubStore.getState().save({...d,label:e.target.value as ListLabel,updatedAt:Date.now()})}>
+                  <option value="none">Nenhum</option>
+                  <option value="wishlist">Wishlist</option>
+                  <option value="collection">Coleção</option>
+                </select>
+              </label>}
               <p className="my-2 text-xs text-slate-400">
                 {d.format} · {d.cards.reduce((n, c) => n + c.quantity, 0)}{" "}
                 cartas
@@ -220,7 +258,8 @@ export function MyDecks() {
             </div>
           </article>
         ))}
-      </div>
+        </div>
+      </section>)}
     </HubLayout>
   );
 }
@@ -249,7 +288,8 @@ export function DeckEditor() {
     draft.title !== existing?.title ||
     draft.format !== existing?.format ||
     draft.nickname !== existing?.nickname ||
-    draft.kind !== existing?.kind;
+    draft.kind !== existing?.kind ||
+    labelOf(draft) !== (existing ? labelOf(existing) : "none");
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
       if (dirty && text.trim()) e.preventDefault();
@@ -436,18 +476,10 @@ export function DeckEditor() {
               </select>
             </label>
             <label className="text-sm">
-              Tipo
-              <select
-                className={field + " mt-2"}
-                value={draft.kind}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    kind: e.target.value as HubDeck["kind"],
-                  })
-                }
-              >
-                <option value="deck">Deck</option>
+              Classificação da lista
+              <select className={field + " mt-2"} value={labelOf(draft)}
+                onChange={e=>setDraft({...draft,label:e.target.value as ListLabel})}>
+                <option value="none">Nenhum</option>
                 <option value="wishlist">Wishlist</option>
                 <option value="collection">Coleção</option>
               </select>
@@ -466,7 +498,7 @@ export function DeckEditor() {
           </label>
           <p className="text-xs text-slate-400">
             Formato: quantidade + nome. Aceita Commander, Deck, Sideboard e
-            versões (SET) número. Quantidades são preservadas.
+            versões (SET) número. Main, Side e Maybe são seções independentes; quantidades são preservadas.
           </p>
           <label className={ghost + " cursor-pointer"}>
             Importar arquivo TXT
