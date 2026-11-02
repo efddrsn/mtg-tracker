@@ -116,11 +116,6 @@ export function SwipeDeck() {
     if (loadedId) configureSwiperDeck(loadedId, { source: next, reviewIndex: 0 });
     history.current = [];
   }
-  function chooseCorner(corner: SwipeCorner, pile: SwipePile) {
-    const updated = { ...corners, [corner]: pile };
-    setCorners(updated);
-    if (loadedId) configureSwiperDeck(loadedId, { corners: updated });
-  }
   function advanceReview(index: number) {
     setReviewIndex(index);
     if (loadedId) configureSwiperDeck(loadedId, { reviewIndex: index });
