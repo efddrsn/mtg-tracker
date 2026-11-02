@@ -29,6 +29,7 @@ describe("deck-scoped Swiper workspace", () => {
     loadSwiperDeck(a);
     useDeckStore.getState().moveCard(toCard(entry("Arcane Signet")), "recommendations", "wishlist");
     useDeckStore.getState().moveCard(toCard(entry("Mana Leak")), "recommendations", "maybe");
+    useDeckStore.getState().saveRevision("Revisão de pilhas");
     configureSwiperDeck(a.id, { source: "maybe", reviewIndex: 1,
       corners: { nw: "owned", ne: "wishlist", sw: "deck", se: "maybe" } });
     persistSwiperDeck(a.id);
@@ -41,6 +42,7 @@ describe("deck-scoped Swiper workspace", () => {
     expect(useDeckStore.getState().deck[0].quantity).toBe(2);
     expect(useDeckStore.getState().wishlist.map(c => c.name)).toEqual(["Arcane Signet"]);
     expect(useDeckStore.getState().maybe.map(c => c.name)).toEqual(["Mana Leak"]);
+    expect(useDeckStore.getState().revisions[0].label).toBe("Revisão de pilhas");
     expect(swipeSessionFor(useHubStore.getState().decks.find(d => d.id === a.id)!).source).toBe("maybe");
     expect(swipeSessionFor(useHubStore.getState().decks.find(d => d.id === a.id)!).corners.se).toBe("maybe");
     expect(useHubStore.getState().decks.find(d => d.id === b.id)!.cards.some(c => c.name === "Eternal Witness")).toBe(true);
