@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { DeckCard, DeckConfig } from "./scryfall";
+import type { ListRevision } from "./deckStore";
 
 export type HubCard = {
   name: string;
@@ -21,6 +22,7 @@ export type SwipeSession = {
   maybe: HubCard[];
   rejected: string[];
   swipeCount: number;
+  revisions?: ListRevision[];
   config: DeckConfig;
   corners: Record<SwipeCorner, SwipePile>;
   source: SwipeSource;
@@ -228,7 +230,7 @@ export function fromCards(cards: (DeckCard & { quantity?: number })[]): HubCard[
     details: c,
   }));
 }
-export function toCard(c: HubCard): DeckCard {
+export function toCard(c: HubCard): DeckCard & { quantity?: number } {
   return (
     c.details ? { ...c.details, quantity: c.quantity } : {
       id: c.oracleId || c.name,
