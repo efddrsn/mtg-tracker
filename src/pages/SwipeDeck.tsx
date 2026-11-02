@@ -181,7 +181,7 @@ export function SwipeDeck() {
         if (decision === 'keep') {
           if (reviewing) advanceReview(reviewIndex + 1);
         } else if (decision === 'reject') {
-          if (reviewing) removeFromList(source, top.oracleId);
+          if (reviewing) removeFromList(source, top.oracleId, top);
           else if (pickingCommander) skip(top);
           else reject(top);
         } else if (pickingCommander && !reviewing) {
