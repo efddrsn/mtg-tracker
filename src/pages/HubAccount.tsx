@@ -38,6 +38,24 @@ export function Account() {
       setBusy(false);
     }
   }
+  async function logout(clearLocal = false) {
+    setBusy(true);
+    setMessage("");
+    try {
+      await api("auth/logout", "POST", {});
+      await refresh();
+      if (clearLocal) useHubStore.setState({ decks: [], activeDeckId: null });
+      setMessage(
+        clearLocal
+          ? "Você saiu e a cópia local foi removida. Seus decks continuam na conta."
+          : "Você saiu. Os decks deste aparelho continuam disponíveis.",
+      );
+    } catch (err) {
+      setMessage((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   function backup() {
     download(
       "magic-hub-backup.json",
@@ -79,20 +97,16 @@ export function Account() {
             <button
               className={ghost}
               disabled={busy}
-              onClick={() => {
-                setBusy(true);
-                void api("auth/logout", "POST", {})
-                  .then(refresh)
-                  .then(() =>
-                    setMessage(
-                      "Você saiu. Os decks deste aparelho continuam disponíveis.",
-                    ),
-                  )
-                  .catch((e: Error) => setMessage(e.message))
-                  .finally(() => setBusy(false));
-              }}
+              onClick={() => void logout()}
             >
               Sair da conta
+            </button>
+            <button
+              className={ghost}
+              disabled={busy}
+              onClick={() => void logout(true)}
+            >
+              Sair e remover cópia local
             </button>
           </div>
           <p className="text-xs text-slate-500">

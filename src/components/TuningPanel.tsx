@@ -61,6 +61,7 @@ export function TuningPanel({ open, dragX, onClose }: TuningPanelProps) {
           transition: dragging ? 'none' : 'transform 0.3s cubic-bezier(0.22,0.61,0.36,1)',
         }}
         role="dialog"
+        inert={!open && dragX===0}
         aria-label="Recommendation details"
       >
         <div
@@ -73,7 +74,7 @@ export function TuningPanel({ open, dragX, onClose }: TuningPanelProps) {
         />
         <div className="tune-body">
           <div className="sheet-header">
-            <h2>🧠 Recommendations</h2>
+            <h2>Sugestões de cartas</h2>
             <button type="button" className="sheet-text-btn" onClick={onClose}>
               Close
             </button>
@@ -86,19 +87,16 @@ export function TuningPanel({ open, dragX, onClose }: TuningPanelProps) {
           </p>
 
           <section className="tune-section">
-            <label className="cfg-label">🧠 How ranking adapts</label>
+            <label className="cfg-label">Como as sugestões funcionam</label>
             <div className="tune-empty">
               <p>
-                Cards you add become input to Recommander, so each “yes” refines the next
-                suggestions around the deck you are actually building.
+                As cartas que você escolhe e seu comandante ajudam a encontrar novas sinergias para o deck.
               </p>
               <p className="tune-empty-hint">
-                A “no” excludes that exact card. It is not sent as a fake negative card because
-                the API has no negative-feedback field; doing so would teach the opposite signal.
+                Passar uma carta retira essa sugestão. As cartas salvas continuam em suas listas.
               </p>
               <p className="tune-empty-hint">
-                If the service is unavailable, the feed automatically falls back to legal,
-                EDHREC-ranked Scryfall cards.
+                O feed indica quando está mostrando sinergias, top picks do comandante ou apenas cartas populares.
               </p>
             </div>
           </section>

@@ -58,7 +58,7 @@ export function MyDecks() {
         );
       useHubStore.getState().restore(d.id);
       setMessage(
-        "Deck restaurado. O link voltou a funcionar sem aparecer na galeria.",
+        d.shareId ? "Deck restaurado. O link voltou a funcionar sem aparecer na galeria." : "Deck restaurado em Meus decks.",
       );
     } catch (e) {
       setMessage((e as Error).message);
@@ -255,39 +255,49 @@ export function DeckEditor() {
       setError((err as Error).message);
     } finally {
       setBusy(false);
-      if (isNew && window.location.pathname === '/decks/new' && useHubStore.getState().decks.some(d=>d.id===draft.id)) navigate('/decks/'+draft.id,{replace:true});
+      if (
+        isNew &&
+        window.location.pathname === "/decks/new" &&
+        useHubStore.getState().decks.some((d) => d.id === draft.id)
+      )
+        navigate("/decks/" + draft.id, { replace: true });
     }
   }
   async function resolve(d: HubDeck): Promise<HubDeck> {
     const { cards, notFound } = await fetchHubCards(d.cards);
+    const unresolved: string[] = [...notFound];
     const enriched = d.cards.map((c) => {
-      const result = cards.find(
-        (x) =>
+      const result = cards.find((x) => {
+        const sameName =
           x.name.toLowerCase() === c.name.toLowerCase() ||
-          x.name.split(" // ")[0].toLowerCase() === c.name.toLowerCase() ||
-          (c.setCode === x.setCode &&
-            c.collectorNumber &&
-            c.collectorNumber === x.collectorNumber),
-      );
-      return result
-        ? {
-            ...c,
-            name: result.name,
-            image: result.image || undefined,
-            oracleId: result.oracleId,
-            setCode: c.setCode || result.setCode,
-            collectorNumber: c.collectorNumber || result.collectorNumber,
-            details: result,
-          }
-        : c;
+          x.name.split(" // ")[0].toLowerCase() === c.name.toLowerCase();
+        return (
+          sameName &&
+          (!c.setCode || c.setCode === x.setCode) &&
+          (!c.collectorNumber || c.collectorNumber === x.collectorNumber)
+        );
+      });
+      if (!result) {
+        unresolved.push(c.name);
+        return { ...c, image: undefined, details: undefined };
+      }
+      return {
+        ...c,
+        name: result.name,
+        image: result.image || undefined,
+        oracleId: result.oracleId,
+        setCode: result.setCode,
+        collectorNumber: result.collectorNumber,
+        details: result,
+      };
     });
     const next = { ...d, cards: enriched, updatedAt: Date.now() };
     useHubStore.getState().save(next);
     setDraft(next);
     setText(listText(enriched));
     setMessage(
-      notFound.length
-        ? `Deck salvo. Não encontramos: ${notFound.join(", ")}. Essas cartas continuam na lista.`
+      unresolved.length
+        ? `Deck salvo. Não encontramos: ${[...new Set(unresolved)].join(", ")}. Essas cartas continuam na lista.`
         : "Deck salvo com imagens e versões.",
     );
     return next;
@@ -585,8 +595,13 @@ export function DeckEditor() {
                   void run(async () => {
                     const d = save();
                     const output = listText(d.cards);
-                    setManualCopy(output);
-                    setMessage(await copy(output));
+                    try {
+                      setMessage(await copy(output));
+                      setManualCopy("");
+                    } catch (err) {
+                      setManualCopy(output);
+                      throw err;
+                    }
                   })
                 }
               >

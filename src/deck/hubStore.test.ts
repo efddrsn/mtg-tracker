@@ -61,3 +61,12 @@ describe("workspace sync and recovery", () => {
     ).toBe(false);
   });
 });
+
+it("normalizes Binder input into repeated unprefixed printing lines", async () => {
+  const { binderText } = await import("./hubStore");
+  expect(
+    binderText(
+      parseHubList("Commander\n1 Urza (MH1) 75\n\nDeck\n2 Island (ELD) 254"),
+    ),
+  ).toBe("Urza (MH1) 75\nIsland (ELD) 254\nIsland (ELD) 254");
+});

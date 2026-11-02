@@ -242,3 +242,18 @@ export function toCard(c: HubCard): DeckCard {
     }
   );
 }
+
+export function binderText(cards: HubCard[]): string {
+  return cards
+    .flatMap((c) =>
+      Array.from(
+        { length: c.quantity },
+        () =>
+          c.name +
+          (c.setCode
+            ? ` (${c.setCode.toUpperCase()})${c.collectorNumber ? " " + c.collectorNumber : ""}`
+            : ""),
+      ),
+    )
+    .join("\n");
+}

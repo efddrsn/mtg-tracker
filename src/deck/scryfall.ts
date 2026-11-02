@@ -3,64 +3,65 @@
 // `order:edhrec`, so we lean on it for the base ranking and layer a local,
 // swipe-driven preference model on top (see recommender.ts).
 
-export type ColorCode = 'W' | 'U' | 'B' | 'R' | 'G';
-export const ALL_COLORS: ColorCode[] = ['W', 'U', 'B', 'R', 'G'];
+export type ColorCode = "W" | "U" | "B" | "R" | "G";
+export const ALL_COLORS: ColorCode[] = ["W", "U", "B", "R", "G"];
 
 export type DeckFormat =
-  | 'commander'
-  | 'standard'
-  | 'pioneer'
-  | 'modern'
-  | 'legacy'
-  | 'pauper'
-  | 'alchemy'
-  | 'historic'
-  | 'explorer'
-  | 'timeless'
-  | 'standardbrawl'
-  | 'gladiator';
+  | "commander"
+  | "standard"
+  | "pioneer"
+  | "modern"
+  | "legacy"
+  | "pauper"
+  | "alchemy"
+  | "historic"
+  | "explorer"
+  | "timeless"
+  | "standardbrawl"
+  | "gladiator";
 
-export const FORMATS: { value: DeckFormat; label: string; arena?: boolean }[] = [
-  { value: 'commander', label: 'Commander' },
-  { value: 'standard', label: 'Standard' },
-  { value: 'pioneer', label: 'Pioneer' },
-  { value: 'modern', label: 'Modern' },
-  { value: 'legacy', label: 'Legacy' },
-  { value: 'pauper', label: 'Pauper' },
-  { value: 'alchemy', label: 'Alchemy', arena: true },
-  { value: 'historic', label: 'Historic', arena: true },
-  { value: 'explorer', label: 'Explorer', arena: true },
-  { value: 'timeless', label: 'Timeless', arena: true },
-  { value: 'standardbrawl', label: 'Brawl', arena: true },
-  { value: 'gladiator', label: 'Gladiator', arena: true },
-];
+export const FORMATS: { value: DeckFormat; label: string; arena?: boolean }[] =
+  [
+    { value: "commander", label: "Commander" },
+    { value: "standard", label: "Standard" },
+    { value: "pioneer", label: "Pioneer" },
+    { value: "modern", label: "Modern" },
+    { value: "legacy", label: "Legacy" },
+    { value: "pauper", label: "Pauper" },
+    { value: "alchemy", label: "Alchemy", arena: true },
+    { value: "historic", label: "Historic", arena: true },
+    { value: "explorer", label: "Explorer", arena: true },
+    { value: "timeless", label: "Timeless", arena: true },
+    { value: "standardbrawl", label: "Brawl", arena: true },
+    { value: "gladiator", label: "Gladiator", arena: true },
+  ];
 
 export type CardKind =
-  | 'creature'
-  | 'instant'
-  | 'sorcery'
-  | 'artifact'
-  | 'enchantment'
-  | 'planeswalker'
-  | 'land';
+  | "creature"
+  | "instant"
+  | "sorcery"
+  | "artifact"
+  | "enchantment"
+  | "planeswalker"
+  | "land";
 
 export const CARD_KINDS: { value: CardKind; label: string }[] = [
-  { value: 'creature', label: 'Creatures' },
-  { value: 'instant', label: 'Instants' },
-  { value: 'sorcery', label: 'Sorceries' },
-  { value: 'artifact', label: 'Artifacts' },
-  { value: 'enchantment', label: 'Enchantments' },
-  { value: 'planeswalker', label: 'Planeswalkers' },
-  { value: 'land', label: 'Lands' },
+  { value: "creature", label: "Creatures" },
+  { value: "instant", label: "Instants" },
+  { value: "sorcery", label: "Sorceries" },
+  { value: "artifact", label: "Artifacts" },
+  { value: "enchantment", label: "Enchantments" },
+  { value: "planeswalker", label: "Planeswalkers" },
+  { value: "land", label: "Lands" },
 ];
 
-export type Rarity = 'common' | 'uncommon' | 'rare' | 'mythic';
+export type Rarity = "common" | "uncommon" | "rare" | "mythic";
 
 export const RARITIES: { value: Rarity; label: string }[] = [
-  { value: 'common', label: 'Common' },
-  { value: 'uncommon', label: 'Uncommon' },
-  { value: 'rare', label: 'Rare' },
-  { value: 'mythic', label: 'Mythic' },
+  { value: "common", label: "Common" },
+  { value: "uncommon", label: "Uncommon" },
+  { value: "rare", label: "Rare" },
+  { value: "mythic", label: "Mythic" },
 ];
 
 export interface DeckConfig {
@@ -69,7 +70,7 @@ export interface DeckConfig {
   colors: ColorCode[];
   // For commander: id<= (within color identity). Otherwise commander-style
   // identity is still a sensible "what fits my deck" filter.
-  colorRule: 'within' | 'exact';
+  colorRule: "within" | "exact";
   // Card types to include (OR). Empty = all types.
   kinds: CardKind[];
   // Free-text theme appended to the query (oracle text / tribe / keyword).
@@ -83,11 +84,11 @@ export interface DeckConfig {
 }
 
 export const DEFAULT_CONFIG: DeckConfig = {
-  format: 'commander',
+  format: "commander",
   colors: [],
-  colorRule: 'within',
+  colorRule: "within",
   kinds: [],
-  theme: '',
+  theme: "",
   hideBasics: true,
   arenaOnly: false,
   rarities: [],
@@ -129,6 +130,7 @@ export interface DeckCard {
   legalities: Record<string, string>;
   // Present when the card came from Recommander. The score is the primary
   // ordering signal; rank preserves the API order if scores tie.
+  recommendationSource?: "model" | "commander-top-picks";
   recommendationScore?: number;
   recommendationRank?: number;
 }
@@ -138,22 +140,28 @@ export interface DeckCard {
 // player favours, say, tokens or sacrifice without a server-side model.
 
 const THEME_PATTERNS: { theme: string; re: RegExp }[] = [
-  { theme: 'tokens', re: /\btoken/ },
-  { theme: 'sacrifice', re: /\bsacrifice/ },
-  { theme: 'lifegain', re: /\b(gain[s]? .*life|lifelink)/ },
-  { theme: 'draw', re: /\bdraw[s]? (a|one|two|three|that many|\d|cards?)/ },
-  { theme: 'plus1counters', re: /\+1\/\+1 counter/ },
-  { theme: 'countermagic', re: /\bcounter target/ },
-  { theme: 'graveyard', re: /\bgraveyard/ },
-  { theme: 'mill', re: /\bmill/ },
-  { theme: 'treasure', re: /\btreasure/ },
-  { theme: 'equipment', re: /\b(equip\b|equipped)/ },
-  { theme: 'auras', re: /\benchant (creature|permanent|player|land)/ },
-  { theme: 'discard', re: /\bdiscard/ },
-  { theme: 'reanimate', re: /return .* from .* graveyard to the battlefield/ },
-  { theme: 'ramp', re: /(search your library for .* land|add \{[wubrgc]\}|mana of any)/ },
-  { theme: 'removal', re: /\b(destroy target|exile target)/ },
-  { theme: 'burn', re: /deals? \d+ damage to (any target|target (creature|player|opponent))/ },
+  { theme: "tokens", re: /\btoken/ },
+  { theme: "sacrifice", re: /\bsacrifice/ },
+  { theme: "lifegain", re: /\b(gain[s]? .*life|lifelink)/ },
+  { theme: "draw", re: /\bdraw[s]? (a|one|two|three|that many|\d|cards?)/ },
+  { theme: "plus1counters", re: /\+1\/\+1 counter/ },
+  { theme: "countermagic", re: /\bcounter target/ },
+  { theme: "graveyard", re: /\bgraveyard/ },
+  { theme: "mill", re: /\bmill/ },
+  { theme: "treasure", re: /\btreasure/ },
+  { theme: "equipment", re: /\b(equip\b|equipped)/ },
+  { theme: "auras", re: /\benchant (creature|permanent|player|land)/ },
+  { theme: "discard", re: /\bdiscard/ },
+  { theme: "reanimate", re: /return .* from .* graveyard to the battlefield/ },
+  {
+    theme: "ramp",
+    re: /(search your library for .* land|add \{[wubrgc]\}|mana of any)/,
+  },
+  { theme: "removal", re: /\b(destroy target|exile target)/ },
+  {
+    theme: "burn",
+    re: /deals? \d+ damage to (any target|target (creature|player|opponent))/,
+  },
 ];
 
 function extractThemes(text: string): string[] {
@@ -177,21 +185,25 @@ function extractThemes(text: string): string[] {
 // fires one extra `otag:` query (scoped to the deck's own filters) and merges
 // the results in, marking them with `tagHints` so they score just as well as
 // (and keep teaching the model alongside) anything matched by regex.
-export const ORACLE_TAG_MAP: { themeKey: string; otag: string; label: string }[] = [
-  { themeKey: 'ramp', otag: 'ramp', label: 'Ramp' },
-  { themeKey: 'removal', otag: 'removal', label: 'Removal' },
-  { themeKey: 'draw', otag: 'card-advantage', label: 'Card advantage' },
-  { themeKey: 'sacrifice', otag: 'sac-outlet', label: 'Sac outlets' },
-  { themeKey: 'lifegain', otag: 'lifegain', label: 'Lifegain' },
-  { themeKey: 'reanimate', otag: 'reanimate', label: 'Reanimation' },
-  { themeKey: 'countermagic', otag: 'counterspell', label: 'Counterspells' },
-  { themeKey: 'discard', otag: 'hand-disruption', label: 'Hand disruption' },
-  { themeKey: 'burn', otag: 'burn', label: 'Burn' },
+export const ORACLE_TAG_MAP: {
+  themeKey: string;
+  otag: string;
+  label: string;
+}[] = [
+  { themeKey: "ramp", otag: "ramp", label: "Ramp" },
+  { themeKey: "removal", otag: "removal", label: "Removal" },
+  { themeKey: "draw", otag: "card-advantage", label: "Card advantage" },
+  { themeKey: "sacrifice", otag: "sac-outlet", label: "Sac outlets" },
+  { themeKey: "lifegain", otag: "lifegain", label: "Lifegain" },
+  { themeKey: "reanimate", otag: "reanimate", label: "Reanimation" },
+  { themeKey: "countermagic", otag: "counterspell", label: "Counterspells" },
+  { themeKey: "discard", otag: "hand-disruption", label: "Hand disruption" },
+  { themeKey: "burn", otag: "burn", label: "Burn" },
 ];
 
 // --- Query construction -----------------------------------------------------
 
-export type FeedPhase = 'commander-select' | 'build';
+export type FeedPhase = "commander-select" | "build";
 
 export interface FeedRequest {
   config: DeckConfig;
@@ -213,15 +225,15 @@ function baseClauses(
 
   const colors = commanderIdentity ?? config.colors;
   if (colors.length > 0) {
-    const c = colors.join('').toLowerCase();
-    const rule = commanderIdentity ? 'within' : config.colorRule;
-    parts.push(rule === 'exact' ? `id=${c}` : `id<=${c}`);
+    const c = colors.join("").toLowerCase();
+    const rule = commanderIdentity ? "within" : config.colorRule;
+    parts.push(rule === "exact" ? `id=${c}` : `id<=${c}`);
   }
 
-  if (config.arenaOnly) parts.push('game:arena');
+  if (config.arenaOnly) parts.push("game:arena");
 
   if (config.rarities.length > 0) {
-    parts.push(`(${config.rarities.map((r) => `rarity:${r}`).join(' OR ')})`);
+    parts.push(`(${config.rarities.map((r) => `rarity:${r}`).join(" OR ")})`);
   }
 
   return parts;
@@ -230,14 +242,14 @@ function baseClauses(
 export function buildQuery(req: FeedRequest): string {
   const { config, commanderIdentity, phase, seed } = req;
 
-  if (phase === 'commander-select') {
-    const parts: string[] = [`legal:${config.format}`, 'is:commander'];
+  if (phase === "commander-select") {
+    const parts: string[] = [`legal:${config.format}`, "is:commander"];
     if (config.colors.length > 0) {
-      parts.push(`id<=${config.colors.join('').toLowerCase()}`);
+      parts.push(`id<=${config.colors.join("").toLowerCase()}`);
     }
-    if (config.arenaOnly) parts.push('game:arena');
-    parts.push('-t:background');
-    return parts.join(' ');
+    if (config.arenaOnly) parts.push("game:arena");
+    parts.push("-t:background");
+    return parts.join(" ");
   }
 
   // Build phase.
@@ -247,23 +259,24 @@ export function buildQuery(req: FeedRequest): string {
     // Distinctive opener: iconic *colored* cards, skipping generic colorless
     // staples (Sol Ring, signets, Command Tower…) and lands. If the player
     // already chose specific rarities above, that choice wins instead.
-    if (config.rarities.length === 0) parts.push('(rarity:rare OR rarity:mythic)');
-    parts.push('-c:c');
-    parts.push('-t:land');
+    if (config.rarities.length === 0)
+      parts.push("(rarity:rare OR rarity:mythic)");
+    parts.push("-c:c");
+    parts.push("-t:land");
   }
 
   if (config.kinds.length > 0) {
-    parts.push(`(${config.kinds.map((k) => `t:${k}`).join(' OR ')})`);
+    parts.push(`(${config.kinds.map((k) => `t:${k}`).join(" OR ")})`);
   }
 
-  if (config.hideBasics) parts.push('-t:basic');
+  if (config.hideBasics) parts.push("-t:basic");
 
   const theme = config.theme.trim();
   if (theme) {
     parts.push(/\s/.test(theme) ? `oracle:"${theme}"` : `oracle:${theme}`);
   }
 
-  return parts.join(' ');
+  return parts.join(" ");
 }
 
 // Query for the general "add a card by name" search: same applicability
@@ -273,7 +286,7 @@ export function buildNameSearchQuery(
   commanderIdentity: ColorCode[] | null,
   term: string,
 ): string {
-  return [...baseClauses(config, commanderIdentity), term].join(' ');
+  return [...baseClauses(config, commanderIdentity), term].join(" ");
 }
 
 // --- Fetching ----------------------------------------------------------------
@@ -345,27 +358,27 @@ function normalize(card: ScryfallCard): DeckCard {
       : undefined;
   const oracle =
     card.oracle_text ??
-    (card.card_faces ?? []).map((f) => f.oracle_text ?? '').join(' \n ');
+    (card.card_faces ?? []).map((f) => f.oracle_text ?? "").join(" \n ");
   return {
     id: card.id,
     oracleId: card.oracle_id,
     name: card.name,
-    typeLine: card.type_line ?? card.card_faces?.[0]?.type_line ?? '',
-    manaCost: card.mana_cost ?? card.card_faces?.[0]?.mana_cost ?? '',
+    typeLine: card.type_line ?? card.card_faces?.[0]?.type_line ?? "",
+    manaCost: card.mana_cost ?? card.card_faces?.[0]?.mana_cost ?? "",
     cmc: card.cmc ?? 0,
     colors: (card.colors ?? []) as ColorCode[],
     colorIdentity: (card.color_identity ?? []) as ColorCode[],
-    rarity: card.rarity ?? 'common',
+    rarity: card.rarity ?? "common",
     keywords: card.keywords ?? [],
     themes: extractThemes(oracle),
     edhrecRank: card.edhrec_rank ?? null,
     image: pickImage(front),
     backImage: pickImage(back),
     priceUsd: card.prices?.usd ?? null,
-    setCode: card.set ?? '',
-    setName: card.set_name ?? '',
-    collectorNumber: card.collector_number ?? '',
-    language: card.lang ?? 'en',
+    setCode: card.set ?? "",
+    setName: card.set_name ?? "",
+    collectorNumber: card.collector_number ?? "",
+    language: card.lang ?? "en",
     artist: card.artist ?? null,
     releasedAt: card.released_at ?? null,
     illustrationId: card.illustration_id ?? null,
@@ -379,7 +392,7 @@ function normalize(card: ScryfallCard): DeckCard {
   };
 }
 
-const SEARCH_URL = 'https://api.scryfall.com/cards/search';
+const SEARCH_URL = "https://api.scryfall.com/cards/search";
 
 export interface RecommendationPage {
   cards: DeckCard[];
@@ -391,31 +404,39 @@ export class ScryfallError extends Error {
   status?: number;
   constructor(message: string, status?: number) {
     super(message);
-    this.name = 'ScryfallError';
+    this.name = "ScryfallError";
     this.status = status;
   }
 }
 
-async function request(url: string, signal?: AbortSignal): Promise<ScryfallList> {
+async function request(
+  url: string,
+  signal?: AbortSignal,
+): Promise<ScryfallList> {
   const res = await fetch(url, {
-    headers: { Accept: 'application/json' },
+    headers: { Accept: "application/json" },
     signal,
   });
   const body = (await res.json()) as ScryfallList;
   if (!res.ok) {
     // Scryfall returns 404 with a list-like error body when nothing matches.
     if (res.status === 404) {
-      return { object: 'list', data: [], has_more: false, total_cards: 0 };
+      return { object: "list", data: [], has_more: false, total_cards: 0 };
     }
-    throw new ScryfallError(body.details ?? `Scryfall error ${res.status}`, res.status);
+    throw new ScryfallError(
+      body.details ?? `Scryfall error ${res.status}`,
+      res.status,
+    );
   }
   return body;
 }
 
 function toPage(body: ScryfallList): RecommendationPage {
   return {
-    cards: (body.data ?? []).filter((c) => c.image_uris || c.card_faces).map(normalize),
-    nextPage: body.has_more ? body.next_page ?? null : null,
+    cards: (body.data ?? [])
+      .filter((c) => c.image_uris || c.card_faces)
+      .map(normalize),
+    nextPage: body.has_more ? (body.next_page ?? null) : null,
     totalCards: body.total_cards ?? 0,
   };
 }
@@ -428,9 +449,9 @@ export async function fetchRecommendations(
 ): Promise<RecommendationPage> {
   const params = new URLSearchParams({
     q: buildQuery(req),
-    order: 'edhrec',
-    dir: 'asc',
-    unique: 'cards',
+    order: "edhrec",
+    dir: "asc",
+    unique: "cards",
   });
   return toPage(await request(`${SEARCH_URL}?${params.toString()}`, signal));
 }
@@ -446,12 +467,15 @@ export async function fetchNextPage(
 // Shared name-search primitive behind both the commander finder and the
 // general "add a card" field: run an arbitrary query and return normalized,
 // image-bearing results, most-played first.
-async function searchByQuery(query: string, signal?: AbortSignal): Promise<DeckCard[]> {
+async function searchByQuery(
+  query: string,
+  signal?: AbortSignal,
+): Promise<DeckCard[]> {
   const params = new URLSearchParams({
     q: query,
-    order: 'edhrec',
-    dir: 'asc',
-    unique: 'cards',
+    order: "edhrec",
+    dir: "asc",
+    unique: "cards",
   });
   const body = await request(`${SEARCH_URL}?${params.toString()}`, signal);
   return (body.data ?? [])
@@ -469,10 +493,20 @@ export async function fetchByOracleTag(
   otag: string,
   signal?: AbortSignal,
 ): Promise<DeckCard[]> {
-  const query = [...baseClauses(config, commanderIdentity), `otag:${otag}`].join(' ');
-  const params = new URLSearchParams({ q: query, order: 'edhrec', dir: 'asc', unique: 'cards' });
+  const query = [
+    ...baseClauses(config, commanderIdentity),
+    `otag:${otag}`,
+  ].join(" ");
+  const params = new URLSearchParams({
+    q: query,
+    order: "edhrec",
+    dir: "asc",
+    unique: "cards",
+  });
   const body = await request(`${SEARCH_URL}?${params.toString()}`, signal);
-  return (body.data ?? []).filter((c) => c.image_uris || c.card_faces).map(normalize);
+  return (body.data ?? [])
+    .filter((c) => c.image_uris || c.card_faces)
+    .map(normalize);
 }
 
 // Search legal commanders by (partial) name — powers the "find my commander"
@@ -496,7 +530,10 @@ export async function searchCards(
 ): Promise<DeckCard[]> {
   const term = name.trim();
   if (!term) return [];
-  return searchByQuery(buildNameSearchQuery(config, commanderIdentity, term), signal);
+  return searchByQuery(
+    buildNameSearchQuery(config, commanderIdentity, term),
+    signal,
+  );
 }
 
 // All paper printings for the version picker. This intentionally keeps
@@ -505,12 +542,12 @@ export async function fetchPrintings(
   cardName: string,
   signal?: AbortSignal,
 ): Promise<DeckCard[]> {
-  const frontName = cardName.split(' // ')[0].trim();
+  const frontName = cardName.split(" // ")[0].trim();
   const params = new URLSearchParams({
     q: `!"${frontName.replace(/"/g, '\\"')}" game:paper`,
-    order: 'released',
-    dir: 'desc',
-    unique: 'prints',
+    order: "released",
+    dir: "desc",
+    unique: "prints",
   });
 
   const cards: DeckCard[] = [];
@@ -523,7 +560,7 @@ export async function fetchPrintings(
         .filter((c) => c.image_uris || c.card_faces)
         .map(normalize),
     );
-    next = body.has_more ? body.next_page ?? null : null;
+    next = body.has_more ? (body.next_page ?? null) : null;
     pageCount += 1;
   }
   return cards;
@@ -531,7 +568,7 @@ export async function fetchPrintings(
 
 // --- Decklist import --------------------------------------------------------
 
-const COLLECTION_URL = 'https://api.scryfall.com/cards/collection';
+const COLLECTION_URL = "https://api.scryfall.com/cards/collection";
 
 interface ScryfallCollection {
   data?: ScryfallCard[];
@@ -544,15 +581,15 @@ interface ScryfallCollection {
 // "SB: ...", trailing foil markers, etc.
 export function parseDecklist(text: string): string[] {
   const names: string[] = [];
-  for (const raw of text.split('\n')) {
+  for (const raw of text.split("\n")) {
     let line = raw.trim();
-    if (!line || line.startsWith('//') || line.startsWith('#')) continue;
-    line = line.replace(/^sb:\s*/i, '');
-    line = line.replace(/^\s*\d+\s*x?\s+/i, ''); // leading quantity
-    line = line.replace(/\s*\([^)]*\)\s*[\w-]*\s*$/i, ''); // (SET) 123
-    line = line.replace(/\s*\[[^\]]*\]\s*$/i, ''); // [tags]
-    line = line.replace(/\s*\*?f\*?\s*$/i, ''); // foil marker
-    line = line.split('//')[0].trim(); // front face of DFCs
+    if (!line || line.startsWith("//") || line.startsWith("#")) continue;
+    line = line.replace(/^sb:\s*/i, "");
+    line = line.replace(/^\s*\d+\s*x?\s+/i, ""); // leading quantity
+    line = line.replace(/\s*\([^)]*\)\s*[\w-]*\s*$/i, ""); // (SET) 123
+    line = line.replace(/\s*\[[^\]]*\]\s*$/i, ""); // [tags]
+    line = line.replace(/\s*\*?f\*?\s*$/i, ""); // foil marker
+    line = line.split("//")[0].trim(); // front face of DFCs
     if (line) names.push(line);
   }
   return names;
@@ -572,34 +609,44 @@ export function matchesRecommendationFilters(
   commanderIdentity: ColorCode[] | null = null,
 ): boolean {
   const legality = card.legalities[config.format];
-  if (legality && legality !== 'legal' && legality !== 'restricted') return false;
+  if (legality && legality !== "legal" && legality !== "restricted")
+    return false;
 
   const allowedColors = commanderIdentity ?? config.colors;
   if (allowedColors.length > 0) {
     const allowed = new Set(allowedColors);
-    const withinIdentity = card.colorIdentity.every((color) => allowed.has(color));
+    const withinIdentity = card.colorIdentity.every((color) =>
+      allowed.has(color),
+    );
     if (!withinIdentity) return false;
-    if (!commanderIdentity && config.colorRule === 'exact') {
+    if (!commanderIdentity && config.colorRule === "exact") {
       const cardIdentity = new Set(card.colorIdentity);
       if (allowedColors.some((color) => !cardIdentity.has(color))) return false;
     }
   }
 
   if (config.hideBasics && /\bbasic land\b/i.test(card.typeLine)) return false;
-  if (config.arenaOnly && !card.games.includes('arena')) return false;
-  if (config.rarities.length > 0 && !config.rarities.includes(card.rarity as Rarity)) {
+  if (config.arenaOnly && !card.games.includes("arena")) return false;
+  if (
+    config.rarities.length > 0 &&
+    !config.rarities.includes(card.rarity as Rarity)
+  ) {
     return false;
   }
   if (
     config.kinds.length > 0 &&
-    !config.kinds.some((kind) => new RegExp(`\\b${kind}\\b`, 'i').test(card.typeLine))
+    !config.kinds.some((kind) =>
+      new RegExp(`\\b${kind}\\b`, "i").test(card.typeLine),
+    )
   ) {
     return false;
   }
   const theme = config.theme.trim().toLowerCase();
   if (
     theme &&
-    !`${card.name} ${card.typeLine} ${card.oracleText}`.toLowerCase().includes(theme)
+    !`${card.name} ${card.typeLine} ${card.oracleText}`
+      .toLowerCase()
+      .includes(theme)
   ) {
     return false;
   }
@@ -607,7 +654,11 @@ export function matchesRecommendationFilters(
 }
 
 async function fetchCollection(
-  identifiers: ({ name: string; set?: string; collector_number?: string } | { oracle_id: string })[],
+  identifiers: (
+    | { name: string; set?: string }
+    | { set: string; collector_number: string }
+    | { oracle_id: string }
+  )[],
   signal?: AbortSignal,
 ): Promise<ImportResult> {
   const cards: DeckCard[] = [];
@@ -615,14 +666,20 @@ async function fetchCollection(
   for (let i = 0; i < identifiers.length; i += 75) {
     const chunk = identifiers.slice(i, i + 75);
     const res = await fetch(COLLECTION_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
       body: JSON.stringify({ identifiers: chunk }),
       signal,
     });
     const body = (await res.json()) as ScryfallCollection;
     if (!res.ok) {
-      throw new ScryfallError(body.details ?? `Scryfall error ${res.status}`, res.status);
+      throw new ScryfallError(
+        body.details ?? `Scryfall error ${res.status}`,
+        res.status,
+      );
     }
     for (const c of body.data ?? []) cards.push(normalize(c));
     for (const nf of body.not_found ?? []) if (nf.name) notFound.push(nf.name);
@@ -635,7 +692,12 @@ export async function fetchCardsByOracleId(
   signal?: AbortSignal,
 ): Promise<DeckCard[]> {
   const unique = [...new Set(oracleIds.filter(Boolean))];
-  return (await fetchCollection(unique.map((oracle_id) => ({ oracle_id })), signal)).cards;
+  return (
+    await fetchCollection(
+      unique.map((oracle_id) => ({ oracle_id })),
+      signal,
+    )
+  ).cards;
 }
 
 // Resolve card names to full cards via Scryfall's collection endpoint
@@ -645,10 +707,22 @@ export async function fetchCardsByName(
   signal?: AbortSignal,
 ): Promise<ImportResult> {
   const unique = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
-  return fetchCollection(unique.map((name) => ({ name })), signal);
+  return fetchCollection(
+    unique.map((name) => ({ name })),
+    signal,
+  );
 }
 
-export async function fetchHubCards(entries: { name: string; setCode?: string; collectorNumber?: string }[]): Promise<ImportResult> {
-  return fetchCollection(entries.map((c) => c.setCode && c.collectorNumber
-    ? { name: c.name, set: c.setCode, collector_number: c.collectorNumber } : { name: c.name }));
+export async function fetchHubCards(
+  entries: { name: string; setCode?: string; collectorNumber?: string }[],
+): Promise<ImportResult> {
+  return fetchCollection(
+    entries.map((c) =>
+      c.setCode && c.collectorNumber
+        ? { set: c.setCode, collector_number: c.collectorNumber }
+        : c.setCode
+          ? { name: c.name, set: c.setCode }
+          : { name: c.name },
+    ),
+  );
 }
