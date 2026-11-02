@@ -43,7 +43,9 @@ async function verifiedIdToken(jwt, nonce) {
   if (header.alg !== "RS256" || !header.kid) throw new Error("Algoritmo de token inválido.");
   const now = Math.floor(Date.now() / 1000);
   if (!["accounts.google.com", "https://accounts.google.com"].includes(claims.iss) ||
-      claims.aud !== clientId || claims.exp <= now || claims.iat > now + 60 ||
+      claims.aud !== clientId || !Number.isSafeInteger(claims.exp) ||
+      !Number.isSafeInteger(claims.iat) || claims.exp <= now ||
+      claims.iat > now + 60 ||
       claims.nonce !== nonce || !claims.sub || claims.email_verified !== true) {
     throw new Error("Identidade Google não verificada.");
   }
