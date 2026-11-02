@@ -65,6 +65,9 @@ export function useRecommendationFeed() {
   const configVersion = useDeckStore((s) => s.configVersion);
   const swipeCount = useDeckStore((s) => s.swipeCount);
   const deck = useDeckStore((s) => s.deck);
+  const positive = useDeckStore((s) => s.positive);
+  // RHS pile choices reinforce recommendations without making cards Main.
+  const recommendationDeck = [...deck, ...positive.filter(c => !deck.some(d => d.oracleId === c.oracleId))];
   const isSeen = useDeckStore((s) => s.isSeen);
 
   const phase: FeedPhase =
@@ -90,7 +93,7 @@ export function useRecommendationFeed() {
   const fallbackStartedRef = useRef(false);
   const lastDeckSignatureRef = useRef("");
 
-  const deckSignature = deck
+  const deckSignature = recommendationDeck
     .map((card) => card.oracleId)
     .sort()
     .join(",");
@@ -136,7 +139,7 @@ export function useRecommendationFeed() {
       snapshot.config.format === "commander" &&
       snapshot.commander != null;
     recommanderPrimaryRef.current = useRecommander;
-    lastDeckSignatureRef.current = snapshot.deck
+    lastDeckSignatureRef.current = [...snapshot.deck, ...snapshot.positive]
       .map((card) => card.oracleId)
       .sort()
       .join(",");
@@ -155,7 +158,8 @@ export function useRecommendationFeed() {
           const cards = await fetchRecommanderRecommendations(
             {
               commander: snapshot.commander,
-              deck: snapshot.deck,
+              deck: [...snapshot.deck, ...snapshot.positive.filter(c =>
+                !snapshot.deck.some(d => d.oracleId === c.oracleId))],
               config: snapshot.config,
             },
             ctrl.signal,
@@ -299,7 +303,7 @@ export function useRecommendationFeed() {
     const timer = window.setTimeout(async () => {
       const snapshot = useDeckStore.getState();
       if (!snapshot.commander) return;
-      lastDeckSignatureRef.current = snapshot.deck
+      lastDeckSignatureRef.current = [...snapshot.deck, ...snapshot.positive]
         .map((card) => card.oracleId)
         .sort()
         .join(",");
@@ -307,7 +311,8 @@ export function useRecommendationFeed() {
         const cards = await fetchRecommanderRecommendations(
           {
             commander: snapshot.commander,
-            deck: snapshot.deck,
+            deck: [...snapshot.deck, ...snapshot.positive.filter(c =>
+                !snapshot.deck.some(d => d.oracleId === c.oracleId))],
             config: snapshot.config,
           },
           ctrl.signal,
