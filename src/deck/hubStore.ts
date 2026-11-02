@@ -14,6 +14,22 @@ export type HubCard = {
   details?: DeckCard;
 };
 export type SwipePile = "deck" | "sideboard" | "maybe" | "wishlist" | "owned" | "none";
+export interface SwiperPileDefinition {
+  id: string;
+  name: string;
+  /** Latest user-defined label; used for cross-deck aggregation. */
+  tag: string;
+  /** Angle in degrees, clockwise from the top of the radial menu. */
+  angle: number;
+  visible: boolean;
+  /** Piles sharing a group are mutually exclusive for each printing. */
+  linkedGroup?: string;
+  /** RHS destinations can feed positive recommendation context. */
+  reinforce?: boolean;
+  /** Set only on custom piles. Default pile membership derives from card zones. */
+  cards?: HubCard[];
+  updatedAt: number;
+}
 export type SwipeSource = "recommendations" | Exclude<SwipePile, "none">;
 export type SwipeCorner = "nw" | "ne" | "sw" | "se";
 export type SwipeSession = {
@@ -28,6 +44,7 @@ export type SwipeSession = {
   config: DeckConfig;
   corners: Record<SwipeCorner, SwipePile>;
   sortingMode?: "section" | "status";
+  piles?: SwiperPileDefinition[];
   sectionCorners?: Record<SwipeCorner, SwipePile>;
   statusCorners?: Record<SwipeCorner, SwipePile>;
   source: SwipeSource;
