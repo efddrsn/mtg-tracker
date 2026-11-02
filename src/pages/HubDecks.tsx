@@ -34,11 +34,40 @@ export function MyDecks() {
   const [message, setMessage] = useState("");
   const user = useAccount((s) => s.user);
   const navigate = useNavigate();
-  function resume(d: HubDeck) {
-    const active = useHubStore.getState().activeDeckId;
-    if (active && active !== d.id) persistSwiperDeck(active);
-    loadSwiperDeck(d);
-    navigate('/swipe');
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  async function resume(d: HubDeck) {
+    if (openingId) return;
+    setOpeningId(d.id);
+    let selected = d;
+    try {
+      // Text-only imports need resolved oracle/color identities before the
+      // Recommander can use this deck as its actual recommendation context.
+      if (d.cards.some(c => !c.details)) {
+        const resolved = await fetchHubCards(d.cards);
+        const cards = d.cards.map(c => {
+          const match = resolved.cards.find(x =>
+            x.name.toLowerCase() === c.name.toLowerCase() &&
+            (!c.setCode || x.setCode === c.setCode) &&
+            (!c.collectorNumber || x.collectorNumber === c.collectorNumber)
+          );
+          return match ? {
+            ...c, details: match, image: match.image || undefined,
+            oracleId: match.oracleId, setCode: match.setCode,
+            collectorNumber: match.collectorNumber,
+          } : c;
+        });
+        selected = { ...d, cards, updatedAt: Math.max(Date.now(), d.updatedAt + 1) };
+        useHubStore.getState().save(selected);
+      }
+    } catch {
+      // Existing saved text is still usable offline; it is never discarded.
+    } finally {
+      const active = useHubStore.getState().activeDeckId;
+      if (active && active !== d.id) persistSwiperDeck(active);
+      loadSwiperDeck(selected);
+      setOpeningId(null);
+      navigate('/swipe');
+    }
   }
   const wishlistCount = useDeckStore((s) => s.wishlist.length);
   const ownedCount = useDeckStore((s) => s.owned.length);
@@ -182,8 +211,8 @@ export function MyDecks() {
                 </button>
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  <button className={button} type="button" onClick={() => resume(d)}>
-                    {d.swiper ? 'Retomar Swiper' : 'Abrir no Swiper'}
+                  <button className={button} type="button" disabled={openingId !== null} onClick={() => void resume(d)}>
+                    {openingId === d.id ? 'Carregando…' : d.swiper ? 'Retomar Swiper' : 'Abrir no Swiper'}
                   </button>
                   <Link className={ghost} to={"/decks/" + d.id}>Editar</Link>
                 </div>
