@@ -29,10 +29,19 @@ export type SwipeSession = {
   source: SwipeSource;
   reviewIndex: number;
 };
+export type ListLabel = "none" | "wishlist" | "collection";
+export function labelOf(deck: HubDeck): ListLabel {
+  return deck.label ?? (deck.kind === "wishlist" ? "wishlist" : deck.kind === "collection" ? "collection" : "none");
+}
+export const LABEL_NAMES: Record<ListLabel, string> = {
+  none: "Nenhum", wishlist: "Wishlist", collection: "Coleção",
+};
 export type HubDeck = {
   id: string;
   title: string;
   kind: "deck" | "wishlist" | "collection";
+  // Independent classification; legacy kind stays for Swiper compatibility.
+  label?: ListLabel;
   format: string;
   nickname: string;
   cards: HubCard[];
@@ -125,6 +134,7 @@ export function makeDeck(
     title,
     cards,
     kind,
+    label: kind === "wishlist" ? "wishlist" : kind === "collection" ? "collection" : "none",
     format: "Commander",
     nickname: useHubStore.getState().nickname,
     createdAt: Date.now(),
