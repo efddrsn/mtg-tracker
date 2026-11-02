@@ -43,7 +43,7 @@ export function VersionPicker({ card, list, onClose }: VersionPickerProps) {
 
   const choose = () => {
     if (!selected) return;
-    update(list, card.oracleId, selected);
+    update(list, card.oracleId, selected, card);
     onClose();
   };
 
