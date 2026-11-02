@@ -86,7 +86,7 @@ export function EventHub() {
               to: "/swipe",
               icon: "✦",
               title: "Descobrir cartas",
-              desc: "Encontre novas ideias, salve sua wishlist e consulte lojas.",
+              desc: "Descubra cartas para seus decks, organize pilhas e consulte lojas.",
             },
             {
               to: "/tracker",
