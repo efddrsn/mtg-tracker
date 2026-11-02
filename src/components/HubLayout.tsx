@@ -13,7 +13,6 @@ export function Brand() {
     <header className="hub-header">
       <Link to="/" className="text-lg font-extrabold tracking-tight">
         magic<span className="text-indigo-300">hub</span>
-        <span className="ml-1 text-[9px] text-slate-500">BETA</span>
       </Link>
       <nav
         aria-label="Navegação principal"
