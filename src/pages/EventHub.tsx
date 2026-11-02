@@ -6,7 +6,14 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { useHubStore, makeDeck, listText, toCard } from "../deck/hubStore";
+import {
+  useHubStore,
+  makeDeck,
+  listText,
+  toCard,
+  binderText,
+  parseHubList,
+} from "../deck/hubStore";
 import type { HubCard } from "../deck/hubStore";
 import {
   HubLayout,
@@ -34,6 +41,7 @@ type Share = {
   cards: HubCard[];
   public?: boolean;
   createdAt: string;
+  deletedAt?: string;
 };
 const shell = "hub-page";
 function Pill({ children }: { children: React.ReactNode }) {
@@ -362,10 +370,15 @@ export function SharedList() {
             <button
               className={ghost}
               onClick={() => {
-                setManual(listText(share.cards));
                 void copy(listText(share.cards))
-                  .then(setStatus)
-                  .catch((e: Error) => setStatus(e.message));
+                  .then((message) => {
+                    setStatus(message);
+                    setManual("");
+                  })
+                  .catch((e: Error) => {
+                    setManual(listText(share.cards));
+                    setStatus(e.message);
+                  });
               }}
             >
               Copiar lista
@@ -473,18 +486,7 @@ export function PrintBinder() {
           name.value = d.title;
           name.dispatchEvent(new Event("input", { bubbles: true }));
         }
-        input.value = d.cards
-          .flatMap((c) =>
-            Array.from(
-              { length: c.quantity },
-              () =>
-                c.name +
-                (c.setCode
-                  ? ` (${c.setCode.toUpperCase()})${c.collectorNumber ? " " + c.collectorNumber : ""}`
-                  : ""),
-            ),
-          )
-          .join("\n");
+        input.value = binderText(d.cards);
         input.dispatchEvent(new Event("input", { bubbles: true }));
         input.dispatchEvent(new Event("change", { bubbles: true }));
         setStatus(
@@ -541,7 +543,29 @@ export function PrintBinder() {
         ref={frame}
         title="Print Binder"
         src="/binder/"
-        onLoad={fill}
+        onLoad={() => {
+          const doc = frame.current?.contentDocument;
+          doc?.addEventListener(
+            "click",
+            (event) => {
+              const target = event.target as HTMLElement;
+              if (!target.closest("#direct-generate, #prepare-button")) return;
+              const input =
+                doc.querySelector<HTMLTextAreaElement>("#card-list");
+              if (!input) return;
+              try {
+                input.value = binderText(parseHubList(input.value));
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+              } catch (err) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                setStatus((err as Error).message);
+              }
+            },
+            { capture: true },
+          );
+          fill();
+        }}
         className="min-h-0 w-full flex-1 border-0"
       />
     </div>
@@ -708,6 +732,26 @@ export function EventAdmin() {
       setError(err instanceof Error ? err.message : "Erro.");
     }
   }
+  async function moderateShare(id: string, restore = false) {
+    setError("");
+    try {
+      const response = await fetch("/api/event/shares/" + id, {
+        method: restore ? "PUT" : "DELETE",
+        headers: { "x-admin-key": secret, "Content-Type": "application/json" },
+        body: restore ? JSON.stringify({ restore: true }) : undefined,
+      });
+      if (!response.ok)
+        throw new Error("Não foi possível alterar esta publicação.");
+      const fresh = await fetch("/api/event/admin", {
+        headers: { "x-admin-key": secret },
+        cache: "no-store",
+      });
+      if (!fresh.ok) throw new Error("Não foi possível atualizar a lista.");
+      setData(await fresh.json());
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
   function exportData() {
     if (!data) return;
     const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -751,6 +795,40 @@ export function EventAdmin() {
             <button className={button} onClick={exportData}>
               Baixar todos os dados (JSON)
             </button>
+            <h2 className="text-xl font-semibold">Gerenciar publicações</h2>
+            <p className="text-xs text-slate-400">
+              Inclui links antigos do evento, que ainda não tinham controle de
+              autor. Remover desativa o link e permite restaurar depois.
+            </p>
+            <div className="space-y-2">
+              {data.shares
+                .slice()
+                .reverse()
+                .map((x) => (
+                  <div
+                    key={x.id}
+                    className={panel + " flex flex-wrap justify-between gap-3"}
+                  >
+                    <div>
+                      <b>{x.title}</b>
+                      <p className="text-xs text-slate-400">
+                        {x.nickname} ·{" "}
+                        {x.deletedAt
+                          ? "Removido"
+                          : x.public
+                            ? "Público"
+                            : "Não listado"}
+                      </p>
+                    </div>
+                    <button
+                      className={ghost}
+                      onClick={() => void moderateShare(x.id, !!x.deletedAt)}
+                    >
+                      {x.deletedAt ? "Restaurar link" : "Remover publicação"}
+                    </button>
+                  </div>
+                ))}
+            </div>
             <h2 className="text-xl font-semibold">Cadastros</h2>
             <div className="space-y-2">
               {data.leads

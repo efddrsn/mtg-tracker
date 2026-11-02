@@ -54,5 +54,27 @@ Implemented scope: 27/30 (90%) of the bounded audit. UI verification and any lim
 ## Validation
 
 - Build and ESLint.
-- 61 automated tests, including new quantity/section/printing round trips, invalid imports/backups, latest-edit/tombstone merging, share authorization/revocation/restore, account isolation, cookie protection, logout invalidation and legacy opt-in privacy.
+- 67 automated tests, including new quantity/section/printing round trips, invalid imports/backups, latest-edit/tombstone merging, share authorization/revocation/restore, account isolation, cookie protection, logout invalidation and legacy opt-in privacy.
 - Browser end-to-end validation: recorded in the follow-up validation section after deployment.
+
+## Browser verification — production, 2026-11-02
+
+Observed in the published UI:
+- Home → import → save (38 physical cards / 5 entries), including commander and sideboard.
+- Scryfall image hydration; exact version identifiers retained. An E2E-discovered name/collector conflict is fixed by resolving exact set/collector identifiers and rejecting mismatched names rather than showing the wrong art.
+- Unlisted share creation → public opt-in → gallery search → shared detail.
+- Copy list verified against actual clipboard text (including 33 Islands and 2 sideboard cards).
+- TXT download observed as a completed browser download.
+- Rename/edit → update same share address (no duplicate snapshot).
+- Store links opened from saved deck; CardTutor and Mox Vault links and copy action verified. Third-party prices/stock are not asserted as verified by opening these links.
+- Deck → Binder auto-fill retained the selected deck name and all 38 physical entries.
+- Three-card Binder generated a completed, downloadable A4 PDF (1 page, 551,590 bytes). E2E found the upstream direct-generation form did not strip leading quantities; integration now normalizes pasted text before preparing/generating.
+- Duplicate → trash → restore → library search passed.
+
+Account password submission is covered by API integration tests; browser validation does not imply a user signed in or supplied credentials. Live multi-device/conflict UX, mobile gesture ergonomics and third-party store inventory remain outside these completed UI checks.
+
+## Recommendation investigation
+
+A direct live cold-start response for Urza returned 25 recommendations, with commander-specific cards and `generic` flags. The old page parser returned zero from current markup because `data-rep`/`data-score` no longer exist. The cold-start proxy had also prioritized that scrape before a healthy API. After a short model batch, the feed could proceed straight to global popularity.
+
+Fixes: live API first; modern dedicated Top Picks parsing; complete-pool sort before truncating legacy markup; Top Picks before general popularity on refill; explicit source in the UI; ordinal page rank kept separate from model confidence; a small penalty only for the API's explicit `generic` flag. No arbitrary card-type/color grouping or random shuffle is introduced. Pile-table interaction is recorded in `swiper-table-backlog.md`.

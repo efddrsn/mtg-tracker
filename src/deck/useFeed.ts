@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useDeckStore } from './deckStore';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useDeckStore } from "./deckStore";
 import {
   fetchRecommendations,
   fetchNextPage,
@@ -7,11 +7,11 @@ import {
   type DeckCard,
   type FeedPhase,
   type FeedRequest,
-} from './scryfall';
+} from "./scryfall";
 import {
   fetchRecommanderRecommendations,
   RecommanderError,
-} from './recommanderApi';
+} from "./recommanderApi";
 
 const LOW_WATER = 6; // refill when the pool drops to this size
 const SEED_LIMIT = 12;
@@ -36,12 +36,21 @@ export function rankPool(items: FeedItem[], keepHead: boolean): FeedItem[] {
   const head = keepHead ? items.slice(0, 1) : [];
   const rest = keepHead ? items.slice(1) : items;
   const ranked = [...rest].sort((a, b) => {
+    const priority = (c: DeckCard) =>
+      c.recommendationSource === "model"
+        ? 0
+        : c.recommendationSource === "commander-top-picks"
+          ? 1
+          : 2;
+    if (priority(a) !== priority(b)) return priority(a) - priority(b);
     const aScore = a.recommendationScore;
     const bScore = b.recommendationScore;
     if (aScore != null && bScore != null) {
-      return bScore - aScore ||
+      return (
+        bScore - aScore ||
         (a.recommendationRank ?? Number.MAX_SAFE_INTEGER) -
-          (b.recommendationRank ?? Number.MAX_SAFE_INTEGER);
+          (b.recommendationRank ?? Number.MAX_SAFE_INTEGER)
+      );
     }
     if (aScore != null) return -1;
     if (bScore != null) return 1;
@@ -59,10 +68,11 @@ export function useRecommendationFeed() {
   const isSeen = useDeckStore((s) => s.isSeen);
 
   const phase: FeedPhase =
-    config.format === 'commander' && !commander ? 'commander-select' : 'build';
-  const seed = config.format !== 'commander' && swipeCount < SEED_LIMIT;
+    config.format === "commander" && !commander ? "commander-select" : "build";
+  const [retryCount, setRetryCount] = useState(0);
+  const seed = config.format !== "commander" && swipeCount < SEED_LIMIT;
   // A change to either forces a refetch; everything else re-ranks in place.
-  const feedKey = `${configVersion}:${phase}:${seed ? 'seed' : 'broad'}`;
+  const feedKey = `${configVersion}:${phase}:${seed ? "seed" : "broad"}:${retryCount}`;
 
   const [state, setState] = useState<FeedState>({
     queue: [],
@@ -78,28 +88,34 @@ export function useRecommendationFeed() {
   const seqRef = useRef(0);
   const recommanderPrimaryRef = useRef(false);
   const fallbackStartedRef = useRef(false);
-  const lastDeckSignatureRef = useRef('');
+  const topPicksStartedRef = useRef(false);
+  const lastDeckSignatureRef = useRef("");
 
   const deckSignature = deck
     .map((card) => card.oracleId)
     .sort()
-    .join(',');
+    .join(",");
 
-  const tag = useCallback((cards: DeckCard[], existing: FeedItem[]): FeedItem[] => {
-    const existingIds = new Set(existing.map((c) => c.oracleId));
-    const fresh: FeedItem[] = [];
-    for (const c of cards) {
-      if (!c.image || isSeen(c.oracleId) || existingIds.has(c.oracleId)) continue;
-      existingIds.add(c.oracleId);
-      fresh.push({ ...c, seq: seqRef.current++ });
-    }
-    return fresh;
-  }, [isSeen]);
+  const tag = useCallback(
+    (cards: DeckCard[], existing: FeedItem[]): FeedItem[] => {
+      const existingIds = new Set(existing.map((c) => c.oracleId));
+      const fresh: FeedItem[] = [];
+      for (const c of cards) {
+        if (!c.image || isSeen(c.oracleId) || existingIds.has(c.oracleId))
+          continue;
+        existingIds.add(c.oracleId);
+        fresh.push({ ...c, seq: seqRef.current++ });
+      }
+      return fresh;
+    },
+    [isSeen],
+  );
 
   const buildRequest = useCallback(
     (): FeedRequest => ({
       config: useDeckStore.getState().config,
-      commanderIdentity: useDeckStore.getState().commander?.colorIdentity ?? null,
+      commanderIdentity:
+        useDeckStore.getState().commander?.colorIdentity ?? null,
       phase,
       seed,
     }),
@@ -115,16 +131,25 @@ export function useRecommendationFeed() {
     nextPageRef.current = null;
     seqRef.current = 0;
     fallbackStartedRef.current = false;
+    topPicksStartedRef.current = false;
     const snapshot = useDeckStore.getState();
     const useRecommander =
-      phase === 'build' && snapshot.config.format === 'commander' && snapshot.commander != null;
+      phase === "build" &&
+      snapshot.config.format === "commander" &&
+      snapshot.commander != null;
     recommanderPrimaryRef.current = useRecommander;
     lastDeckSignatureRef.current = snapshot.deck
       .map((card) => card.oracleId)
       .sort()
-      .join(',');
+      .join(",");
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState({ queue: [], loading: true, error: null, exhausted: false, totalCards: 0 });
+    setState({
+      queue: [],
+      loading: true,
+      error: null,
+      exhausted: false,
+      totalCards: 0,
+    });
 
     const initial = async () => {
       if (useRecommander && snapshot.commander) {
@@ -167,7 +192,9 @@ export function useRecommendationFeed() {
           loading: false,
           error: null,
           exhausted:
-            !page.nextPage && !recommanderPrimaryRef.current && fresh.length === 0,
+            !page.nextPage &&
+            !recommanderPrimaryRef.current &&
+            fresh.length === 0,
           totalCards: page.totalCards,
         });
       })
@@ -176,7 +203,7 @@ export function useRecommendationFeed() {
         const msg =
           err instanceof ScryfallError || err instanceof RecommanderError
             ? err.message
-            : 'Could not load recommendations. Check your connection.';
+            : "Could not load recommendations. Check your connection.";
         setState((s) => ({ ...s, loading: false, error: msg }));
       })
       .finally(() => {
@@ -196,11 +223,30 @@ export function useRecommendationFeed() {
     if (fetchingRef.current || (!nextPageRef.current && !startFallback)) return;
     fetchingRef.current = true;
     const ctrl = abortRef.current ?? new AbortController();
-    const pageRequest = startFallback
-      ? fetchRecommendations(buildRequest(), ctrl.signal)
-      : fetchNextPage(nextPageRef.current!, ctrl.signal);
-    if (startFallback) fallbackStartedRef.current = true;
-    setState((s) => ({ ...s, loading: true }));
+    const snapshot = useDeckStore.getState();
+    const useTopPicks =
+      startFallback && !topPicksStartedRef.current && !!snapshot.commander;
+    let pageRequest;
+    if (useTopPicks && snapshot.commander) {
+      topPicksStartedRef.current = true;
+      pageRequest = fetchRecommanderRecommendations(
+        {
+          commander: snapshot.commander,
+          deck: snapshot.deck,
+          config: snapshot.config,
+          source: "top-picks",
+        },
+        ctrl.signal,
+      )
+        .then((cards) => ({ cards, nextPage: null, totalCards: cards.length }))
+        .catch(() => ({ cards: [], nextPage: null, totalCards: 0 }));
+    } else {
+      pageRequest = startFallback
+        ? fetchRecommendations(buildRequest(), ctrl.signal)
+        : fetchNextPage(nextPageRef.current!, ctrl.signal);
+      if (startFallback) fallbackStartedRef.current = true;
+    }
+    setState((s) => ({ ...s, loading: true, error: null }));
 
     pageRequest
       .then((page) => {
@@ -219,7 +265,11 @@ export function useRecommendationFeed() {
       })
       .catch(() => {
         if (ctrl.signal.aborted) return;
-        setState((s) => ({ ...s, loading: false }));
+        setState((s) => ({
+          ...s,
+          loading: false,
+          error: "Não foi possível carregar mais cartas. Tente novamente.",
+        }));
       })
       .finally(() => {
         fetchingRef.current = false;
@@ -258,8 +308,8 @@ export function useRecommendationFeed() {
   // `tag` already filters their exact oracle ids.
   useEffect(() => {
     if (
-      phase !== 'build' ||
-      config.format !== 'commander' ||
+      phase !== "build" ||
+      config.format !== "commander" ||
       !commander ||
       !recommanderPrimaryRef.current ||
       deckSignature === lastDeckSignatureRef.current
@@ -273,7 +323,7 @@ export function useRecommendationFeed() {
       lastDeckSignatureRef.current = snapshot.deck
         .map((card) => card.oracleId)
         .sort()
-        .join(',');
+        .join(",");
       try {
         const cards = await fetchRecommanderRecommendations(
           {
@@ -312,13 +362,24 @@ export function useRecommendationFeed() {
     const canStartFallback =
       recommanderPrimaryRef.current && !fallbackStartedRef.current;
     if (
+      !state.error &&
+      !state.loading &&
       state.queue.length <= LOW_WATER &&
       (nextPageRef.current || canStartFallback) &&
       !fetchingRef.current
     ) {
       loadMore();
     }
-  }, [state.queue.length, loadMore]);
+  }, [state.queue.length, state.loading, state.error, loadMore]);
 
-  return { ...state, phase, advance, loadMore, pushFront };
+  const source = state.queue[0]?.recommendationSource || "popular";
+  return {
+    ...state,
+    source,
+    phase,
+    advance,
+    loadMore,
+    pushFront,
+    retry: () => setRetryCount((n) => n + 1),
+  };
 }

@@ -225,7 +225,7 @@ export function SwipeDeck() {
         <div className="feed-message">
           <p className="feed-message-title">Couldn't load cards</p>
           <p className="feed-message-sub">{feed.error}</p>
-          <button type="button" className="feed-retry" onClick={() => feed.loadMore()}>
+          <button type="button" className="feed-retry" onClick={() => feed.retry()}>
             Retry
           </button>
         </div>
@@ -318,6 +318,7 @@ export function SwipeDeck() {
         </button>
       </header>
 
+      {!pickingCommander && <div className="px-4 py-1 text-center text-[10px] text-text-dim" role="status">{feed.loading&&!top?'Buscando sinergias…':feed.source==='model'?'Sinergia com seu deck · Recommander':feed.source==='commander-top-picks'?'Top picks do comandante · sinergia temporariamente indisponível':'Populares no formato · sem recomendação personalizada'}</div>}
       {/* Context banner: what the feed is currently doing */}
       {pickingCommander ? (
         <button

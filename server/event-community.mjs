@@ -403,7 +403,7 @@ export async function handleEventApi(req, res, pathname) {
           throw Object.assign(new Error("Lista não encontrada."), {
             status: 404,
           });
-        if (!owns(req, data, item) && !(req.method === "DELETE" && admin(req)))
+        if (!owns(req, data, item) && !admin(req))
           throw Object.assign(new Error("Você não pode alterar esta lista."), {
             status: 403,
           });

@@ -3,9 +3,9 @@ import {
   matchesRecommendationFilters,
   type DeckCard,
   type DeckConfig,
-} from './scryfall';
+} from "./scryfall";
 
-const RECOMMENDER_PROXY_URL = '/api/recommander';
+const RECOMMENDER_PROXY_URL = "/api/recommander";
 
 export interface ApiRecommendation {
   oracle_id: string;
@@ -13,14 +13,19 @@ export interface ApiRecommendation {
   score: number;
   commander_count?: number;
   lift?: number;
+  generic?: boolean;
+  score_kind?: "ordinal";
+  source?: "model" | "commander-top-picks";
 }
 
 interface ApiResponse {
   recommendations?: ApiRecommendation[];
   message?: string;
+  source?: "model" | "commander-top-picks";
 }
 
 export interface RecommanderQuery {
+  source?: "top-picks";
   commander: DeckCard;
   deck: DeckCard[];
   config: DeckConfig;
@@ -31,7 +36,7 @@ export class RecommanderError extends Error {
 
   constructor(message: string, status?: number) {
     super(message);
-    this.name = 'RecommanderError';
+    this.name = "RecommanderError";
     this.status = status;
   }
 }
@@ -40,10 +45,16 @@ export class RecommanderError extends Error {
 // small confidence correction keeps the model's personalization dominant while
 // demoting cold-start outliers. The curve saturates at 1,000 commander decks.
 export function adjustedRecommendationScore(item: ApiRecommendation): number {
+  if (item.score_kind === "ordinal") return item.score;
   const count = Math.max(0, item.commander_count ?? 0);
   const confidence = Math.min(1, Math.log10(count + 1) / 3);
   const lift = Math.max(-2, Math.min(3, item.lift ?? 0));
-  return item.score * (0.7 + 0.3 * confidence) + 0.04 * confidence + 0.01 * lift;
+  return (
+    item.score * (0.7 + 0.3 * confidence) +
+    0.04 * confidence +
+    0.01 * lift -
+    (item.generic ? 0.08 : 0)
+  );
 }
 
 // The API learns only from cards the player actually chose. Rejected cards are
@@ -52,7 +63,7 @@ export function adjustedRecommendationScore(item: ApiRecommendation): number {
 // preference. Exact rejections are filtered by the feed's `isSeen` check.
 export function buildRecommanderPayload({ commander, deck }: RecommanderQuery) {
   return {
-    card_format: 'oracle_id' as const,
+    card_format: "oracle_id" as const,
     commander: commander.oracleId,
     partner: null,
     deck: deck
@@ -65,21 +76,27 @@ export async function fetchRecommanderRecommendations(
   query: RecommanderQuery,
   signal?: AbortSignal,
 ): Promise<DeckCard[]> {
-  const response = await fetch(RECOMMENDER_PROXY_URL, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
+  const response = await fetch(
+    RECOMMENDER_PROXY_URL + (query.source === "top-picks" ? "/top" : ""),
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(buildRecommanderPayload(query)),
+      signal,
     },
-    body: JSON.stringify(buildRecommanderPayload(query)),
-    signal,
-  });
+  );
 
   let body: ApiResponse;
   try {
     body = (await response.json()) as ApiResponse;
   } catch {
-    throw new RecommanderError('Recommander returned an invalid response.', response.status);
+    throw new RecommanderError(
+      "Recommander returned an invalid response.",
+      response.status,
+    );
   }
 
   if (!response.ok) {
@@ -92,11 +109,13 @@ export async function fetchRecommanderRecommendations(
   const recommendations = (body.recommendations ?? [])
     .filter(
       (item) =>
-        typeof item.oracle_id === 'string' &&
-        typeof item.score === 'number' &&
+        typeof item.oracle_id === "string" &&
+        typeof item.score === "number" &&
         Number.isFinite(item.score),
     )
-    .sort((a, b) => adjustedRecommendationScore(b) - adjustedRecommendationScore(a))
+    .sort(
+      (a, b) => adjustedRecommendationScore(b) - adjustedRecommendationScore(a),
+    )
     // Apply UI filters after hydration, so a restrictive filter does not only
     // inspect the first 50 upstream cards and incorrectly report no matches.
     .slice(0, 225);
@@ -109,16 +128,26 @@ export async function fetchRecommanderRecommendations(
   );
   const byOracleId = new Map(hydrated.map((card) => [card.oracleId, card]));
 
-  return recommendations.flatMap((item, rank) => {
-    const card = byOracleId.get(item.oracle_id);
-    if (
-      !card ||
-      !matchesRecommendationFilters(card, query.config, query.commander.colorIdentity)
-    ) return [];
-    return [{
-      ...card,
-      recommendationScore: adjustedRecommendationScore(item),
-      recommendationRank: rank,
-    }];
-  }).slice(0, 100);
+  return recommendations
+    .flatMap((item, rank) => {
+      const card = byOracleId.get(item.oracle_id);
+      if (
+        !card ||
+        !matchesRecommendationFilters(
+          card,
+          query.config,
+          query.commander.colorIdentity,
+        )
+      )
+        return [];
+      return [
+        {
+          ...card,
+          recommendationSource: item.source || body.source || "model",
+          recommendationScore: adjustedRecommendationScore(item),
+          recommendationRank: rank,
+        },
+      ];
+    })
+    .slice(0, 100);
 }
