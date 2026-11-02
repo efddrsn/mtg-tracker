@@ -1583,3 +1583,68 @@ body { margin: 0; padding: 0; }
   .hub-page main { padding-left: 14px; padding-right: 14px; }
   .swipe-decision-overlay { top: 58px; }
 }
+
+/* Swiper layout: navigation → commander context → card → undo.
+   Context and controls participate in flex flow so the card never sits
+   behind the commander pill or the bottom action on short iPhone screens. */
+.swipe-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.swipe-topbar {
+  position: relative;
+  inset: auto;
+  top: auto;
+  left: auto;
+  right: auto;
+  flex: 0 0 auto;
+  padding: calc(10px + env(safe-area-inset-top)) 12px 8px;
+  pointer-events: auto;
+}
+.feed-banner {
+  position: relative;
+  inset: auto;
+  bottom: auto;
+  left: auto;
+  transform: none;
+  flex: 0 0 auto;
+  align-self: center;
+  margin: 4px 12px 8px;
+  max-width: calc(100% - 24px);
+  min-width: 0;
+}
+.card-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  container-type: size;
+}
+.swipe-card {
+  /* The stage's actual remaining height, not the whole viewport, sets
+     the card width. Its 488:680 ratio is preserved in every orientation. */
+  width: min(calc(100% - 28px), calc((100dvh - 224px) * 0.717647), 475px);
+  width: min(calc(100cqw - 28px), calc((100cqh - 20px) * 0.717647), 475px);
+  height: auto;
+  max-height: calc(100% - 20px);
+  aspect-ratio: 488 / 680;
+}
+.swipe-actions-undo-only {
+  flex: 0 0 auto;
+  min-height: 0;
+  gap: 0;
+  padding: 6px 0 calc(12px + env(safe-area-inset-bottom));
+}
+.swipe-actions-undo-only .action-undo {
+  width: 46px;
+  height: 46px;
+}
+.swipe-hint { z-index: 2; }
+.swipe-hint-top { top: 8px; }
+.swipe-hint-bottom { bottom: 8px; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .swipe-topbar { padding-top: 4px; padding-bottom: 4px; }
+  .feed-banner { margin-top: 2px; margin-bottom: 2px; padding-top: 4px; padding-bottom: 4px; }
+  .swipe-actions-undo-only { padding-top: 2px; padding-bottom: max(4px, env(safe-area-inset-bottom)); }
+}
