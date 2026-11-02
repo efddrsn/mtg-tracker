@@ -375,7 +375,12 @@ export const useDeckStore = create<DeckState>()(
         if (version < 7) s = { ...s, owned: [], revisions: [] };
         // Legacy `deck` meant Wishlist; never reinterpret it as deck
         // membership and accidentally change Recommander training inputs.
-        if (version < 8) s = { ...s, wishlist: s.deck ?? [], maybe: [], deck: [] };
+        if (version < 8) s = {
+          ...s, wishlist: s.deck ?? [], maybe: [], deck: [],
+          revisions: (s.revisions || []).map(r => ({
+            ...r, deck: [], wishlist: r.wishlist, maybe: [],
+          })),
+        };
         return s as DeckState;
       },
     },
