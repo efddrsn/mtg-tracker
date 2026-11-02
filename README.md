@@ -6,7 +6,11 @@ recommendation app.
 
 ## Deck workspace (`/decks`)
 
-Import text or TXT files with quantities, sections and printing IDs. Save named decks, edit, duplicate, trash/restore, copy/download TXT, publish an owner-controlled stable link or keep a deck private. Shared decks connect to store links and Binder; open a saved deck in Swiper and save new choices back. Optional email/password accounts sync private decks; JSON backup works without an account. Contact/news signup is separate from login. Password recovery is not yet available.
+Import text or TXT files with quantities, sections and printing IDs. Save named decks, edit, duplicate, trash/restore, copy/download TXT, publish an owner-controlled stable link or keep a deck private. Shared decks connect to store links and Binder; open a saved deck in Swiper and save new choices back. Optional email/password accounts sync private decks; signup does not require a display name. JSON backup works without an account. Contact/news signup is separate from login. Password recovery is not yet available.
+
+**Google sign-in (production setup):** Create an OAuth 2.0 **Web application** client in Google Cloud Console. Add `https://mtg-tracker-production-4ff1.up.railway.app/api/event/auth/google/callback` as an authorized redirect URI. On the Magic Hub Railway service, set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_REDIRECT_URI` (that exact callback URL). Only the client ID is non-secret; store the secret as a protected server variable, never in Vite/client code. If these variables are absent, the Google option stays disabled and password login continues to work. Existing Gmail/password users can link their account automatically after verifying their Google identity. For third-party email domains, sign in with the existing password first to link securely.
+
+**Current security baseline:** Server-side salted scrypt password hashes; 256-bit opaque random session cookies stored only as hashes, with HttpOnly/SameSite=Lax/Secure-over-HTTPS; same-origin write checks; request-size limits; throttling; server-owned authorization and random private sharing tokens; no user workspace exposure to gallery by default. Google OAuth uses authorization code + PKCE, nonce/state and locally validated signed ID tokens (issuer/audience/expiry/email verification). Account records and private decks are stored in the Railway persistent volume, not end-to-end encrypted. This is **not a completed security audit**: account email verification, password resets, persistent distributed rate limiting, session-management UI and managed database/backups remain to be implemented before scaling public adoption.
 
 Audit, priorities, E2E evidence and remaining gaps: [deck workspace audit](docs/deck-workspace-audit.md). Proposed configurable pile-table interaction: [Swiper backlog](docs/swiper-table-backlog.md).
 
@@ -45,8 +49,7 @@ almost the entire screen; everything else stays out of the way.
 - **Rarity filter** — narrow to common/uncommon/rare/mythic
 - **Adaptive recommendations** — every yes becomes new model input and refreshes
   the ranking; every no is excluded without being misrepresented as a deck card
-- **Recommendation panel** — the right-edge tab explains the active model input,
-  rejection behavior, and automatic fallback
+- **Visible feed source** — the feed indicates live model suggestions, commander picks, or fallback without a secondary explanation drawer
 - **Undo**, tap-to-flip double-faced cards, and on-screen buttons as fallbacks
 - **Persistent** — your commander, deck, rejections, and filters survive reloads
 
