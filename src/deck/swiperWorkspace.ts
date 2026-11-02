@@ -31,6 +31,7 @@ export function swipeSessionFor(deck: HubDeck): SwipeSession {
     maybe: stored?.maybe || [],
     rejected: stored?.rejected || [],
     swipeCount: stored?.swipeCount || 0,
+    revisions: stored?.revisions || [],
     config,
     source: stored?.source || "recommendations",
     reviewIndex: stored?.reviewIndex || 0,
