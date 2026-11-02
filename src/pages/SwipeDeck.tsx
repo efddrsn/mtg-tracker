@@ -314,7 +314,7 @@ export function SwipeDeck() {
 
     if (axis.current === null) {
       if (Math.abs(dx) < AXIS_LOCK && Math.abs(dy) < AXIS_LOCK) return;
-      axis.current = Math.abs(dx) > Math.abs(dy) * 0.35 ? 'h' : 'v';
+      axis.current = (dx < -AXIS_LOCK && dy > AXIS_LOCK) || Math.abs(dx) > Math.abs(dy) * 0.35 ? 'h' : 'v';
       try {
         (e.target as Element).setPointerCapture?.(e.pointerId);
       } catch { /* ignore */ }
@@ -486,14 +486,12 @@ export function SwipeDeck() {
             </option>)}
           </select>
         </div>
-        <button type="button"
+        <div
           className={`swipe-corner swipe-corner-sw swipe-trash ${draggingCard && destinationFor(drag.x,drag.y)==='reject' ? 'swipe-target-active' : ''}`}
-          onClick={() => chooseSource('recommendations')}
-          onPointerDown={e=>e.stopPropagation()}
           aria-label="Descarte fixo: arraste à esquerda ou abaixo à esquerda"
           title="Descarte: esquerda ou diagonal inferior esquerda">
           <span>Descartar</span><span>×</span>
-        </button>
+        </div>
         {CORNERS.filter(c=>c.id!=='sw').map(corner => (
           <button type="button"
             className={`swipe-corner swipe-corner-${corner.id} ${draggingCard && destinationFor(drag.x,drag.y)===corner.id ? 'swipe-target-active' : ''} ${source===corners[corner.id] ? 'swipe-target-center' : ''}`}
