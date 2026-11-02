@@ -1648,3 +1648,105 @@ body { margin: 0; padding: 0; }
   .feed-banner { margin-top: 2px; margin-bottom: 2px; padding-top: 4px; padding-bottom: 4px; }
   .swipe-actions-undo-only { padding-top: 2px; padding-bottom: max(4px, env(safe-area-inset-bottom)); }
 }
+
+/* Deck-first, four-corner card table. The layout keeps the same Swiper palette
+   without marketing badges or an extra right-side drawer. */
+.swipe-workspace-select {
+  flex: 1 1 140px;
+  min-width: 72px;
+  max-width: 360px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 8px 4px;
+  font-size: 12px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+}
+.swipe-feed-status {
+  flex: 0 0 auto;
+  font-size: 11px;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+.swipe-source-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  min-width: 0;
+  padding: 4px 12px 8px;
+}
+.swipe-source-row select {
+  min-width: 0;
+  width: min(58vw, 290px);
+  height: 36px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 6px 9px;
+  font-size: 13px;
+  font-weight: 750;
+}
+.swipe-source-progress {
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.swipe-edit-deck {
+  padding: 6px;
+  color: var(--color-accent-hover);
+  background: transparent;
+  font-size: 12px;
+}
+.swipe-table { overflow: hidden; }
+.swipe-table .swipe-card {
+  width: min(calc(100cqw - 116px), calc((100cqh - 24px) * 0.717647), 475px);
+}
+.swipe-corner {
+  position: absolute;
+  z-index: 125;
+  width: clamp(54px, 15vw, 87px);
+  min-height: 44px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 5px 3px 3px;
+  border: 1px solid rgba(199, 210, 254, .22);
+  border-radius: 10px;
+  background: rgba(20, 20, 35, .92);
+  backdrop-filter: blur(10px);
+  color: var(--color-text-secondary);
+}
+.swipe-corner select {
+  width: 100%;
+  max-width: 100%;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: clamp(9px, 2.5vw, 12px);
+  color: var(--color-text-primary);
+  background: transparent;
+  border: 0;
+  text-overflow: ellipsis;
+}
+.swipe-corner span { font-size: 10px; font-variant-numeric: tabular-nums; }
+.swipe-corner-nw { top: 10px; left: 6px; }
+.swipe-corner-ne { top: 10px; right: 6px; }
+.swipe-corner-sw { bottom: 8px; left: 6px; }
+.swipe-corner-se { bottom: 8px; right: 6px; }
+.swipe-table .swipe-decision-overlay { top: 55px; }
+.swipe-table .swipe-hint-top { top: 8px; font-size: 9px; }
+.swipe-table .swipe-hint-bottom { bottom: 8px; font-size: 9px; }
+@media (max-width: 400px) {
+  .swipe-topbar { gap: 4px; padding-left: 6px; padding-right: 6px; }
+  .swipe-workspace-select { flex-basis: 80px; }
+  .swipe-topbar .deck-pill { padding-left: 7px; padding-right: 7px; font-size: 10px; }
+}
+@media (max-height: 620px) {
+  .swipe-corner { min-height: 35px; padding: 2px; }
+  .swipe-source-row { padding: 1px 8px 4px; }
+}
