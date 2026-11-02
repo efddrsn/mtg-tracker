@@ -33,6 +33,8 @@ export interface DeckState {
   // or physically owning a card. Lists are scoped to the active workspace deck.
   deck: SavedCard[];
   sideboard: SavedCard[];
+  /** Positive recommendation examples, independent of actual deck membership. */
+  positive: SavedCard[];
   wishlist: SavedCard[];
   maybe: SavedCard[];
   owned: SavedCard[];
@@ -61,6 +63,7 @@ export interface DeckState {
   moveCard: (card: DeckCard, source: CardList | 'recommendations', destination: CardList) => void;
   assignSection: (card: DeckCard, destination: 'deck' | 'sideboard' | 'maybe') => void;
   setInterest: (card: DeckCard, status: 'wishlist' | 'owned' | 'none') => void;
+  reinforceCard: (card: DeckCard) => void;
   // Backwards-compatible name used by the recommender/search components.
   addToDeck: (card: DeckCard) => void;
   reject: (card: DeckCard) => void;
@@ -135,6 +138,7 @@ export const useDeckStore = create<DeckState>()(
         config: { ...DEFAULT_CONFIG },
         deck: [],
         sideboard: [],
+        positive: [],
         wishlist: [],
         maybe: [],
         owned: [],
@@ -281,6 +285,10 @@ export const useDeckStore = create<DeckState>()(
             swipeCount: s.swipeCount + 1,
           };
         }),
+        reinforceCard: card => set(s => (
+          s.positive.some(c => c.oracleId === card.oracleId)
+            ? s : { positive: [save(card), ...s.positive].slice(0, 150) }
+        )),
         reject: (card) => {
           set((s) => ({
             rejected: s.rejected.includes(card.oracleId)
@@ -410,11 +418,12 @@ export const useDeckStore = create<DeckState>()(
     },
     {
       name: 'mtg-swipe-deck',
-      version: 9,
+      version: 10,
       partialize: (s) => ({
         config: s.config,
         deck: s.deck,
         sideboard: s.sideboard,
+        positive: s.positive,
         wishlist: s.wishlist,
         maybe: s.maybe,
         owned: s.owned,
@@ -437,6 +446,7 @@ export const useDeckStore = create<DeckState>()(
           })),
         };
         if (version < 9) s = { ...s, sideboard: [] };
+        if (version < 10) s = { ...s, positive: [] };
         return s as DeckState;
       },
     },
