@@ -2,30 +2,40 @@ import { DEFAULT_CONFIG, type DeckFormat } from "./scryfall";
 import { useDeckStore, type DeckState, type SavedCard } from "./deckStore";
 import { fromCards, makeDeck, toCard, useHubStore, type HubDeck, type HubCard, type SwipeCorner, type SwipePile, type SwipeSession } from "./hubStore";
 
+export type SortMode = "section" | "status";
+const SECTION_PILES: SwipePile[] = ["deck", "sideboard", "maybe"];
+const STATUS_PILES: SwipePile[] = ["wishlist", "owned"];
 export const DEFAULT_CORNERS: Record<SwipeCorner, SwipePile> = {
   nw: "maybe", ne: "deck", sw: "sideboard", se: "sideboard",
 };
-
-/** Three visible destinations: Main, Sideboard, Maybe. The lower-left corner
- * is reserved for discard, and old Wishlist/Owned corners are reset without
- * deleting the cards they held in legacy storage. */
-export function normalizedDestinations(saved?: Partial<Record<SwipeCorner, SwipePile>>): Record<SwipeCorner, SwipePile> {
-  const slots: Array<"nw" | "ne" | "se"> = ["nw", "ne", "se"];
-  const allowed: SwipePile[] = ["deck", "sideboard", "maybe"];
-  const result: Record<SwipeCorner, SwipePile> = { ...DEFAULT_CORNERS };
+export const DEFAULT_STATUS_CORNERS: Record<SwipeCorner, SwipePile> = {
+  nw: "wishlist", ne: "owned", sw: "wishlist", se: "owned",
+};
+/** Lower-left is a fixed discard lane. Only nw/ne/se are user destinations. */
+export function normalizedDestinations(
+  saved?: Partial<Record<SwipeCorner, SwipePile>>,
+  mode: SortMode = "section",
+): Record<SwipeCorner, SwipePile> {
+  const allowed = mode === "section" ? SECTION_PILES : [...STATUS_PILES, "none" as SwipePile];
+  const base = mode === "section"
+    ? { nw: "maybe", ne: "deck", se: "sideboard" }
+    : { nw: "wishlist", ne: "owned", se: "none" as SwipePile };
+  const result = { ...base } as Record<SwipeCorner, SwipePile>;
+  result.sw = mode === "section" ? "sideboard" : "owned"; // unused: fixed discard
   const used = new Set<SwipePile>();
-  for (const slot of slots) {
-    const choice = saved?.[slot];
-    if (choice && allowed.includes(choice) && !used.has(choice)) {
-      result[slot] = choice;
-      used.add(choice);
-    }
+  for (const slot of ["nw", "ne", "se"] as const) {
+    const chosen = saved?.[slot];
+    if (chosen && allowed.includes(chosen) && !used.has(chosen)) {
+      result[slot] = chosen;
+      used.add(chosen);
+    } else result[slot] = "" as SwipePile;
   }
-  for (const slot of slots) {
-    if (used.has(result[slot])) continue;
-    const choice = allowed.find(p => !used.has(p))!;
-    result[slot] = choice;
-    used.add(choice);
+  for (const slot of ["nw", "ne", "se"] as const) {
+    if (result[slot]) continue;
+    const suggested = base[slot];
+    const chosen = !used.has(suggested) ? suggested : allowed.find(v => !used.has(v))!;
+    result[slot] = chosen;
+    used.add(chosen);
   }
   return result;
 }
@@ -55,11 +65,12 @@ export function swipeSessionFor(deck: HubDeck): SwipeSession {
     swipeCount: stored?.swipeCount || 0,
     revisions: stored?.revisions || [],
     config,
-    source: stored?.source === "wishlist" || stored?.source === "owned"
-      ? "recommendations" : stored?.source || "recommendations",
-    reviewIndex: stored?.source === "wishlist" || stored?.source === "owned"
-      ? 0 : stored?.reviewIndex || 0,
-    corners: normalizedDestinations(stored?.corners),
+    source: stored?.source || (stored?.sortingMode === "status" ? "deck" : "wishlist"),
+    reviewIndex: stored?.reviewIndex || 0,
+    corners: normalizedDestinations(stored?.corners, stored?.sortingMode || "section"),
+    sortingMode: stored?.sortingMode || "section",
+    sectionCorners: normalizedDestinations(stored?.sectionCorners, "section"),
+    statusCorners: normalizedDestinations(stored?.statusCorners, "status"),
   };
 }
 
@@ -76,10 +87,16 @@ export function hydratedDeckState(deck: HubDeck) {
   const loadedDeck = asSaved(mainCards);
   const loadedSide = asSaved(deck.cards.filter(c => c.section === "sideboard"));
   const loadedMaybe = asSaved(deck.cards.filter(c => c.section === "maybe"));
-  const sideboard = loadedSide.length ? loadedSide : asSaved(session.sideboard || []);
-  const maybe = loadedMaybe.length ? loadedMaybe : asSaved(session.maybe);
-  const wishlist = asSaved(session.wishlist);
-  const owned = asSaved(session.owned);
+  // A saved session is authoritative even when a pile is now empty; the
+  // canonical deck.cards still supports imported lists without session data.
+  const sideboard = deck.swiper ? asSaved(session.sideboard || loadedSide) : loadedSide;
+  const maybe = deck.swiper ? asSaved(session.maybe) : loadedMaybe;
+  const wishlist = asSaved(session.wishlist.length
+    ? session.wishlist
+    : deck.kind === "wishlist" ? deck.cards : []);
+  const owned = asSaved(session.owned.length
+    ? session.owned
+    : deck.kind === "collection" ? deck.cards : []);
   const rejected = [...new Set([
     ...session.rejected, ...loadedDeck.map(c => c.oracleId),
     ...sideboard.map(c => c.oracleId), ...maybe.map(c => c.oracleId),
@@ -177,7 +194,7 @@ export function persistSwiperDeck(deckId: string) {
   hub.save(updatedSwiperDeck(deck, useDeckStore.getState()));
 }
 
-export function configureSwiperDeck(deckId: string, patch: Partial<Pick<SwipeSession, "corners" | "source" | "reviewIndex">>) {
+export function configureSwiperDeck(deckId: string, patch: Partial<Pick<SwipeSession, "corners" | "source" | "reviewIndex" | "sortingMode" | "sectionCorners" | "statusCorners">>) {
   const hub = useHubStore.getState();
   const deck = hub.decks.find(d => d.id === deckId && !d.deletedAt);
   if (!deck) return;
