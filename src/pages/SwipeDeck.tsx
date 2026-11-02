@@ -330,42 +330,17 @@ export function SwipeDeck() {
         )}
       </div>
 
-      {/* Action buttons (fallback / accessibility) */}
-      <footer className="swipe-actions">
-        <button
-          type="button"
-          className="action-btn action-nope"
-          onClick={() => commit('reject')}
-          disabled={!top}
-          aria-label="Reject"
-        >
-          ✕
-        </button>
+      {/* Swipe gestures handle decisions; keep only the undo action below the card. */}
+      <footer className="swipe-actions swipe-actions-undo-only">
         <button
           type="button"
           className="action-btn action-undo"
           onClick={undo}
-          aria-label="Undo"
+          disabled={history.current.length === 0 || busy.current}
+          aria-label="Desfazer último swipe"
+          title="Desfazer último swipe"
         >
           ↺
-        </button>
-        <button
-          type="button"
-          className="action-btn action-add"
-          onClick={() => commit('wishlist')}
-          disabled={!top}
-          aria-label="Adicionar à wishlist"
-        >
-          ↗
-        </button>
-        <button
-          type="button"
-          className="action-btn action-owned"
-          onClick={() => commit('owned')}
-          disabled={!top || pickingCommander}
-          aria-label="Marcar como já tenho"
-        >
-          ↘
         </button>
       </footer>
 
