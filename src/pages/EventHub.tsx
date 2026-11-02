@@ -450,7 +450,11 @@ export function SharedList() {
 export function PrintBinder() {
   const [search] = useSearchParams();
   const decks = useHubStore((s) => s.decks);
-  const d = decks.find((d) => d.id === search.get("deck") && !d.deletedAt);
+  const available = decks.filter(d=>!d.deletedAt);
+  const [selectedId,setSelectedId] = useState(search.get("deck") || "");
+  const d = available.find(d=>d.id===selectedId);
+  const [zone,setZone] = useState<"all" | "main" | "sideboard" | "maybe">("all");
+  const selectedCards = d?.cards.filter(c=>zone==="all" || c.section===zone || (zone==="main"&&c.section==="commander")) || [];
   const frame = useRef<HTMLIFrameElement>(null);
   const [status, setStatus] = useState("");
   const fill = () => {
@@ -469,7 +473,7 @@ export function PrintBinder() {
           name.value = d.title;
           name.dispatchEvent(new Event("input", { bubbles: true }));
         }
-        input.value = binderText(d.cards);
+        input.value = binderText(selectedCards);
         input.dispatchEvent(new Event("input", { bubbles: true }));
         input.dispatchEvent(new Event("change", { bubbles: true }));
         setStatus(
@@ -483,6 +487,9 @@ export function PrintBinder() {
       setStatus("Copie a lista e cole no campo do Binder.");
     }
   };
+  useEffect(() => {
+    if (d) fill();
+  }, [selectedId,zone]);
   return (
     <div className="hub-page flex h-full flex-col">
       <Brand />
@@ -490,7 +497,19 @@ export function PrintBinder() {
         <Link className="text-indigo-300" to={d ? "/decks/" + d.id : "/decks"}>
           ← {d ? d.title : "Meus decks"}
         </Link>
-        <span className="text-slate-500">Print Binder</span>
+        <strong className="text-indigo-200">Print Studio</strong>
+        <select aria-label="Escolher deck ou lista" className={field + " !w-auto !py-2"} value={selectedId}
+          onChange={e=>setSelectedId(e.target.value)}>
+          <option value="">Selecione um deck/lista</option>
+          {available.map(deck=><option value={deck.id} key={deck.id}>{deck.title}</option>)}
+        </select>
+        <select aria-label="Seção para imprimir" className={field + " !w-auto !py-2"} value={zone}
+          onChange={e=>setZone(e.target.value as typeof zone)}>
+          <option value="all">Todas as seções</option>
+          <option value="main">Main + comandante</option>
+          <option value="sideboard">Side</option>
+          <option value="maybe">Maybe</option>
+        </select>
         {d && (
           <>
             <button className={ghost} onClick={fill}>
@@ -499,7 +518,7 @@ export function PrintBinder() {
             <button
               className={ghost}
               onClick={() =>
-                void copy(listText(d.cards))
+                void copy(listText(selectedCards))
                   .then(setStatus)
                   .catch((e: Error) => setStatus(e.message))
               }
