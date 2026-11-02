@@ -1503,3 +1503,15 @@ input, button, select, textarea {
 .store-export-form { display: grid; gap: 10px; padding: 12px; }
 .store-export-form label { display: grid; gap: 4px; }
 .store-export-form input { min-width: 0; width: 100%; padding: 10px; border: 1px solid #666; border-radius: 8px; background: #171717; color: white; font: inherit; }
+
+/* Shared workspace pages scroll independently of the tabletop tracker. */
+.hub-page { height: 100%; width: 100%; overflow-y: auto; overflow-x: hidden; background: #0c0f18; color: #f4f4f8; }
+.hub-header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #ffffff12; }
+.hub-header nav a { font-size:12px; padding:9px 10px; border-radius:10px; color:#b5b9cc; }
+.hub-header nav a.active { background:#818cf81a; color:#c7d2fe; }
+.hub-eyebrow { font-size:10px; letter-spacing:.16em; color:#a5b4fc; margin-bottom:10px; font-weight:600; }
+.hub-deck-text { min-height:320px; resize:vertical; font-family:ui-monospace,monospace; line-height:1.7; }
+.hub-page input,.hub-page textarea { user-select:text; -webkit-user-select:text; }
+.hub-page select option { background:#171b2a; }
+.hub-modal { position:fixed; inset:0; z-index:150; display:flex; align-items:center; justify-content:center; background:#000b; padding:16px; }
+.hub-modal-body { max-height:95dvh; overflow:auto; width:100%; max-width:520px; background:#171b2a; padding:20px; border-radius:20px; display:grid; gap:16px; }

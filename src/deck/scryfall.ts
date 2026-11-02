@@ -607,7 +607,7 @@ export function matchesRecommendationFilters(
 }
 
 async function fetchCollection(
-  identifiers: ({ name: string } | { oracle_id: string })[],
+  identifiers: ({ name: string; set?: string; collector_number?: string } | { oracle_id: string })[],
   signal?: AbortSignal,
 ): Promise<ImportResult> {
   const cards: DeckCard[] = [];
@@ -646,4 +646,9 @@ export async function fetchCardsByName(
 ): Promise<ImportResult> {
   const unique = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
   return fetchCollection(unique.map((name) => ({ name })), signal);
+}
+
+export async function fetchHubCards(entries: { name: string; setCode?: string; collectorNumber?: string }[]): Promise<ImportResult> {
+  return fetchCollection(entries.map((c) => c.setCode && c.collectorNumber
+    ? { name: c.name, set: c.setCode, collector_number: c.collectorNumber } : { name: c.name }));
 }

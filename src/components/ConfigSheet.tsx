@@ -88,6 +88,7 @@ export function ConfigSheet({ open, dragY, onClose }: ConfigSheetProps) {
           transition: dragY === 0 ? 'transform 0.3s cubic-bezier(0.22,0.61,0.36,1)' : 'none',
         }}
         role="dialog"
+        inert={!open && dragY===0}
         aria-label="Recommendation filters"
       >
         <div className="sheet-body">

@@ -1,236 +1,790 @@
-import { useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { useDeckStore } from '../deck/deckStore';
+import { useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
+import { useHubStore, makeDeck, listText, toCard } from "../deck/hubStore";
+import type { HubCard } from "../deck/hubStore";
+import {
+  HubLayout,
+  Brand,
+  panel,
+  field,
+  button,
+  ghost,
+} from "../components/HubLayout";
+import { api, copy, download } from "../deck/hubApi";
+import { CardTutorExport } from "../components/CardTutorExport";
 
-type GalleryItem = { id: string; title: string; nickname: string; count: number; image: string; createdAt: string };
-type SharedCard = { name: string; oracleId?: string; image?: string; setCode?: string; collectorNumber?: string };
-type Share = { id: string; title: string; nickname: string; cards: SharedCard[]; createdAt: string };
-const shell = 'min-h-screen w-full overflow-y-auto bg-[#0c0f18] text-white';
-const panel = 'rounded-2xl border border-white/10 bg-white/[0.055] p-5';
-const field = 'w-full rounded-xl border border-white/20 bg-black/30 px-3 py-3 text-sm text-white outline-none focus:border-indigo-400';
-const button = 'rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-50';
-const ghost = 'rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-medium text-white hover:bg-white/20';
-
-function Brand() {
-  return <header className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
-    <Link to="/" className="text-lg font-extrabold tracking-tight text-white">magic<span className="text-indigo-300">hub</span><span className="ml-2 text-[10px] font-semibold tracking-widest text-indigo-300">BETA</span></Link>
-    <Link to="/community" className="rounded-full border border-white/20 px-3 py-2 text-xs font-semibold text-white">Comunidade</Link>
-  </header>;
-}
+type GalleryItem = {
+  id: string;
+  title: string;
+  nickname: string;
+  count: number;
+  image: string;
+  createdAt: string;
+};
+type Share = {
+  id: string;
+  title: string;
+  nickname: string;
+  cards: HubCard[];
+  public?: boolean;
+  createdAt: string;
+};
+const shell = "hub-page";
 function Pill({ children }: { children: React.ReactNode }) {
-  return <span className="inline-flex rounded-full border border-indigo-400/25 bg-indigo-400/10 px-2.5 py-1 text-xs font-medium text-indigo-200">{children}</span>;
-}
-function ToolCard({ to, label, desc, tag, children }: { to: string; label: string; desc: string; tag: string; children: React.ReactNode }) {
-  return <Link to={to} className="flex min-h-36 flex-col justify-between rounded-2xl border border-white/10 bg-white/[0.065] p-4 transition-colors hover:bg-white/10">
-    <div className="flex items-start justify-between gap-2"><span className="text-2xl">{children}</span><span className="text-[10px] font-medium text-emerald-300">{tag}</span></div>
-    <div><div className="mt-4 text-base font-bold">{label}</div><p className="mt-1 text-xs leading-relaxed text-slate-400">{desc}</p></div>
-  </Link>;
+  return (
+    <span className="rounded-full bg-indigo-500/10 px-3 py-1 text-xs text-indigo-200">
+      {children}
+    </span>
+  );
 }
 export function EventHub() {
-  const wishlist = useDeckStore((s) => s.deck);
-  const owned = useDeckStore((s) => s.owned);
-  const commander = useDeckStore((s) => s.commander);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [nickname, setNickname] = useState('');
-  const [consent, setConsent] = useState(false);
-  const [registration, setRegistration] = useState('');
-  const [feedback, setFeedback] = useState('');
-  const [feature, setFeature] = useState('Geral');
-  const [rating, setRating] = useState('5');
-  const [feedbackStatus, setFeedbackStatus] = useState('');
-  const [shareTitle, setShareTitle] = useState('');
-  const [showPublic, setShowPublic] = useState(false);
-  const [shareStatus, setShareStatus] = useState('');
-  const [shareUrl, setShareUrl] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [hubShareStatus, setHubShareStatus] = useState('');
-  async function shareHub() {
-    const url = window.location.origin + '/';
-    if (navigator.share) {
-      try { await navigator.share({ title: 'Magic Hub — ferramentas gratuitas de MTG', url }); return; }
-      catch (e) { if ((e as Error).name === 'AbortError') return; }
-    }
-    try { await navigator.clipboard.writeText(url); setHubShareStatus('Link do Magic Hub copiado!'); }
-    catch { setHubShareStatus(url); }
-  }
-
-  async function register(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setBusy(true); setRegistration('');
-    try {
-      const r = await fetch('/api/event/register', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, nickname, consent }) });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
-      setRegistration('Cadastro recebido. Obrigado por participar!');
-    } catch (err) { setRegistration(err instanceof Error ? err.message : 'Erro de conexão.'); }
-    finally { setBusy(false); }
-  }
-  async function sendFeedback(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault(); setBusy(true); setFeedbackStatus('');
-    try {
-      const r = await fetch('/api/event/feedback', { method: 'POST',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: feedback, feature, rating: Number(rating) }) });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
-      setFeedback(''); setFeedbackStatus('Feedback enviado. Obrigado!');
-    } catch (err) { setFeedbackStatus(err instanceof Error ? err.message : 'Erro de conexão.'); }
-    finally { setBusy(false); }
-  }
-  async function share(list: 'wishlist' | 'owned') {
-    const cards = list === 'wishlist' ? wishlist : owned;
-    if (!cards.length) { setShareStatus('Adicione cartas à sua lista no Swiper primeiro.'); return; }
-    setBusy(true); setShareStatus(''); setShareUrl('');
-    try {
-      const r = await fetch('/api/event/shares', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: shareTitle.trim() || ((commander?.name || 'Meu deck') + ' — ' + (list === 'wishlist' ? 'wishlist' : 'coleção')),
-          nickname, public: showPublic, cards: cards.map((c) => ({ name: c.name, oracleId: c.oracleId,
-            image: c.image, setCode: c.setCode, collectorNumber: c.collectorNumber })) }) });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
-      const url = window.location.origin + '/share/' + data.id;
-      setShareUrl(url); setShareStatus('Link público criado! Ele mostra apenas as cartas da lista.');
-      if (navigator.share) {
-        try { await navigator.share({ title: shareTitle || 'Meu deck', url }); } catch { /* dismiss */ }
-      } else if (navigator.clipboard) { await navigator.clipboard.writeText(url).catch(() => {}); }
-    } catch (err) { setShareStatus(err instanceof Error ? err.message : 'Erro ao compartilhar.'); }
-    finally { setBusy(false); }
-  }
-  return <div className={shell}>
-    <Brand />
-    <main className="mx-auto max-w-3xl space-y-8 px-4 pb-16 pt-8 sm:px-6">
-      <section className="space-y-4">
-        <Pill>Grátis · Criado para jogadores · Early access</Pill>
-        <h1 className="text-4xl font-black leading-tight tracking-tight sm:text-5xl">Seu Magic, <span className="text-indigo-300">num só lugar.</span></h1>
-        <p className="max-w-lg text-sm leading-relaxed text-slate-300">Descubra cartas, monte listas, consulte lojas e imprima seu binder. Use sem conta; cadastre-se se quiser acompanhar as novidades e participar da comunidade.</p>
-        <div className="flex flex-wrap gap-2"><a href="#apps" className={button}>Explorar ferramentas</a><button type="button" onClick={() => void shareHub()} className={ghost}>Compartilhar app</button><a href="#cadastro" className={ghost}>Entrar na comunidade</a></div>{hubShareStatus && <p className="break-all text-xs text-indigo-300" role="status">{hubShareStatus}</p>}
-      </section>
-      <section id="apps" className="space-y-3">
-        <div className="flex items-center justify-between"><h2 className="text-xl font-bold">Ferramentas</h2><span className="text-xs text-slate-400">Sem cobrança por IA</span></div>
-        <div className="grid grid-cols-2 gap-3">
-          <ToolCard to="/swipe" label="Descobrir cartas" desc="Swipe, wishlist, coleção, preços e lojas." tag="GRÁTIS">✦</ToolCard>
-          <ToolCard to="/tracker" label="Tracker de partida" desc="Vida, mana, storm, turnos e contadores." tag="GRÁTIS">◎</ToolCard>
-          <ToolCard to="/print" label="Print Binder" desc="Escolha edições e gere binder em PDF." tag="GRÁTIS">▤</ToolCard>
-          <ToolCard to="/community" label="Decks da comunidade" desc="Veja listas compartilhadas por jogadores." tag="NOVO">♧</ToolCard>
+  const allDecks = useHubStore((s) => s.decks);
+  const decks = allDecks.filter((d) => !d.deletedAt).slice(0, 3);
+  const [status, setStatus] = useState("");
+  return (
+    <HubLayout>
+      <section className="space-y-5 py-5">
+        <p className="hub-eyebrow">FERRAMENTAS PARA JOGAR</p>
+        <h1 className="text-4xl font-black leading-tight tracking-tight sm:text-5xl">
+          Seu Magic,
+          <br />
+          <span className="text-indigo-300">num só lugar.</span>
+        </h1>
+        <p className="max-w-lg text-sm leading-relaxed text-slate-300">
+          Seus decks, novas cartas e tudo para levar a lista à mesa. Importe uma
+          vez e continue de onde parou.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Link className={button} to="/decks/new">
+            Importar meu deck
+          </Link>
+          <Link className={ghost} to="/decks">
+            Meus decks
+          </Link>
         </div>
       </section>
-      <section className={panel + ' space-y-4'}>
-        <div><Pill>Compartilhe no evento</Pill><h2 className="mt-3 text-xl font-bold">Compartilhe suas cartas</h2>
-        <p className="mt-1 text-sm text-slate-400">Crie um link de uma lista do Swiper para enviar pelo WhatsApp ou copiar. Nenhum email é divulgado.</p></div>
-        <div className="flex gap-3 text-sm"><span>Wishlist: <b>{wishlist.length}</b></span><span>Minhas cartas: <b>{owned.length}</b></span></div>
-        <input className={field} value={shareTitle} onChange={(e) => setShareTitle(e.target.value)} maxLength={90} placeholder="Título da lista (opcional)" aria-label="Título da lista" />
-        <input className={field} value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={40} placeholder="Seu nick (opcional)" aria-label="Seu nick" />
-        <label className="flex items-center gap-2 text-xs text-slate-300"><input type="checkbox" checked={showPublic} onChange={(e) => setShowPublic(e.target.checked)} /> Mostrar esta lista na galeria pública da comunidade</label>
-        <div className="flex flex-wrap gap-2"><button className={button} disabled={busy} onClick={() => void share('wishlist')}>Compartilhar wishlist</button><button className={ghost} disabled={busy} onClick={() => void share('owned')}>Compartilhar coleção</button></div>
-        {shareStatus && <p role="status" className="text-sm text-indigo-200">{shareStatus}</p>}
-        {shareUrl && <div className="flex flex-wrap items-center gap-2"><a className="break-all text-sm text-sky-300 underline" href={shareUrl}>{shareUrl}</a><button className={ghost} onClick={() => void navigator.clipboard?.writeText(shareUrl)}>Copiar</button></div>}
+      <section>
+        <div className="mb-3 flex justify-between">
+          <h2 className="text-xl font-semibold">Ferramentas</h2>
+          <span className="text-xs text-slate-500">
+            Grátis · Sem conta obrigatória
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            {
+              to: "/swipe",
+              icon: "✦",
+              title: "Descobrir cartas",
+              desc: "Encontre novas ideias, salve sua wishlist e consulte lojas.",
+            },
+            {
+              to: "/tracker",
+              icon: "◎",
+              title: "Tracker de partida",
+              desc: "Vida, mana, storm, turnos e contadores na mesa.",
+            },
+            {
+              to: "/print",
+              icon: "▤",
+              title: "Print Binder",
+              desc: "Leve seu deck, escolha versões e gere PDFs.",
+            },
+            {
+              to: "/community",
+              icon: "↗",
+              title: "Explorar decks",
+              desc: "Abra listas compartilhadas e salve uma cópia sua.",
+            },
+          ].map((t) => (
+            <Link
+              className={
+                panel +
+                " flex flex-col gap-3 transition-colors hover:bg-white/10"
+              }
+              key={t.to}
+              to={t.to}
+            >
+              <span className="text-2xl text-indigo-300">{t.icon}</span>
+              <h3 className="font-semibold">{t.title}</h3>
+              <p className="text-xs leading-relaxed text-slate-400">{t.desc}</p>
+            </Link>
+          ))}
+        </div>
       </section>
-      <section id="cadastro" className={panel + ' space-y-3'}>
-        <div><h2 className="text-xl font-bold">Participe do projeto</h2><p className="mt-1 text-sm text-slate-400">Receba novidades e ajude a escolher as próximas funcionalidades.</p></div>
-        <form onSubmit={(e) => void register(e)} className="space-y-3">
-          <input className={field} value={name} onChange={(e) => setName(e.target.value)} required maxLength={90} placeholder="Seu nome" autoComplete="name" />
-          <input className={field} value={email} onChange={(e) => setEmail(e.target.value)} type="email" required maxLength={254} placeholder="Seu email" autoComplete="email" />
-          <input name="website" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden="true" />
-          <label className="flex items-start gap-2 text-xs leading-relaxed text-slate-300"><input type="checkbox" required checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5" /> Autorizo guardar meu nome e email para receber contato sobre este projeto e convites para feedback. Meus dados não aparecerão publicamente.</label>
-          <button className={button + ' w-full'} disabled={busy || !consent}>Quero participar</button>
-          {registration && <p role="status" className="text-sm text-indigo-200">{registration}</p>}
-        </form>
+      {!!decks.length && (
+        <section className="space-y-3">
+          <h2 className="text-xl font-semibold">Continuar um deck</h2>
+          {decks.map((d) => (
+            <Link
+              className={panel + " flex items-center justify-between"}
+              key={d.id}
+              to={"/decks/" + d.id}
+            >
+              <span className="font-medium">{d.title}</span>
+              <span className="text-xs text-slate-400">
+                {d.cards.reduce((n, c) => n + c.quantity, 0)} cartas →
+              </span>
+            </Link>
+          ))}
+        </section>
+      )}
+      <section
+        className={panel + " flex flex-wrap items-center justify-between gap-3"}
+      >
+        <div>
+          <h2 className="font-semibold">Uma lista, vários caminhos</h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Salvar → descobrir → comprar → imprimir → compartilhar.
+          </p>
+        </div>
+        <Link to="/decks" className={ghost}>
+          Abrir biblioteca
+        </Link>
       </section>
-      <section className={panel + ' space-y-3'}>
-        <div><h2 className="text-xl font-bold">O que você mudaria?</h2><p className="mt-1 text-sm text-slate-400">Um minuto de feedback já ajuda muito.</p></div>
-        <form onSubmit={(e) => void sendFeedback(e)} className="space-y-3">
-          <select className={field} value={feature} onChange={(e) => setFeature(e.target.value)} aria-label="Ferramenta">
-            <option>Geral</option><option>Swiper</option><option>Tracker</option><option>Print Binder</option><option>Comunidade</option>
-          </select>
-          <select className={field} value={rating} onChange={(e) => setRating(e.target.value)} aria-label="Nota">
-            <option value="5">5 — Adorei</option><option value="4">4 — Gostei</option><option value="3">3 — Mediano</option><option value="2">2 — Precisa melhorar</option><option value="1">1 — Não funcionou</option>
-          </select>
-          <textarea className={field + ' min-h-28'} value={feedback} onChange={(e) => setFeedback(e.target.value)} required minLength={8} maxLength={1500} placeholder="O que faltou? O que foi mais útil?" />
-          <button className={ghost + ' w-full'} disabled={busy}>Enviar feedback</button>
-          {feedbackStatus && <p role="status" className="text-sm text-indigo-200">{feedbackStatus}</p>}
-        </form>
-      </section>
-      <footer className="space-y-2 border-t border-white/10 pt-4 text-xs leading-relaxed text-slate-500"><p>Projeto independente, não afiliado à Wizards of the Coast. Dados de cartas e imagens via Scryfall; serviços externos sujeitos a limites e disponibilidade.</p><p>O cadastro é opcional. Nome e email são usados apenas para contato sobre o projeto. Listas só aparecem na galeria com sua autorização.</p><Link to="/admin" className="underline">Área do organizador</Link></footer>
-    </main>
-  </div>;
+      <div className="flex flex-wrap gap-4 text-sm">
+        <button
+          className="text-indigo-300"
+          onClick={() =>
+            void copy(window.location.origin + "/")
+              .then(setStatus)
+              .catch((e: Error) => setStatus(e.message))
+          }
+        >
+          Copiar link do app
+        </button>
+        <Link to="/feedback" className="text-slate-400">
+          Novidades e feedback
+        </Link>
+      </div>
+      {status && <p role="status">{status}</p>}
+      <p className="text-[11px] text-slate-500">
+        Projeto independente, não afiliado à Wizards of the Coast. Dados e
+        imagens via Scryfall.
+      </p>
+    </HubLayout>
+  );
 }
 export function Community() {
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    fetch('/api/event/gallery').then((r) => { if (!r.ok) throw new Error('Falha ao consultar galeria.'); return r.json(); })
-      .then((data: { shares: GalleryItem[] }) => setGallery(data.shares))
-      .catch((err: Error) => setError(err.message));
-  }, []);
-  return <div className={shell}><Brand /><main className="mx-auto max-w-3xl space-y-5 px-4 py-8">
-    <div><h1 className="text-3xl font-bold">Decks da comunidade</h1><p className="mt-2 text-sm text-slate-400">Listas compartilhadas voluntariamente pelos jogadores. Compartilhe a sua a partir da página inicial.</p></div>
-    <Link className={button + ' inline-block'} to="/">Compartilhar minhas cartas</Link>
-    {error && <p role="alert">{error}</p>}
-    {!error && !gallery.length && <p className="rounded-xl border border-white/10 bg-white/5 p-6 text-sm text-slate-300">Seja o primeiro a compartilhar uma lista!</p>}
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{gallery.map((s) =>
-      <Link key={s.id} to={'/share/' + s.id} className="flex gap-4 rounded-xl border border-white/10 bg-white/5 p-3 hover:bg-white/10">
-        {s.image ? <img src={s.image} alt="" loading="lazy" className="h-24 w-16 rounded object-cover" /> : <div className="h-24 w-16 rounded bg-indigo-900" />}
-        <div className="min-w-0"><h2 className="break-words font-semibold">{s.title}</h2><p className="mt-2 text-xs text-slate-400">{s.nickname} · {s.count} cartas</p></div>
-      </Link>)}</div>
-  </main></div>;
+    let active = true;
+    api<{ shares: GalleryItem[] }>("gallery")
+      .then((d) => {
+        if (active) setGallery(d.shares);
+      })
+      .catch((e: Error) => {
+        if (active) setError(e.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [attempt]);
+  const filtered = gallery.filter((s) =>
+    (s.title + " " + s.nickname).toLowerCase().includes(query.toLowerCase()),
+  );
+  return (
+    <HubLayout>
+      <div>
+        <p className="hub-eyebrow">IDEIAS DE OUTROS JOGADORES</p>
+        <h1 className="text-3xl font-bold">Explorar decks</h1>
+        <p className="mt-2 text-sm text-slate-400">
+          Listas que seus autores escolheram publicar. Abra, copie ou adapte uma
+          para você.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Link className={button} to="/decks/new">
+          Importar meu deck
+        </Link>
+        <Link className={ghost} to="/decks">
+          Gerenciar meus decks
+        </Link>
+      </div>
+      <input
+        className={field}
+        aria-label="Buscar decks públicos"
+        value={query}
+        placeholder="Buscar por deck ou jogador"
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      {loading && <p role="status">Carregando decks…</p>}
+      {error && (
+        <div role="alert">
+          <p>{error}</p>
+          <button
+            className={ghost}
+            onClick={() => {
+              setLoading(true);
+              setError("");
+              setAttempt(attempt + 1);
+            }}
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
+      {!loading && !error && !filtered.length && (
+        <p className={panel}>
+          {query
+            ? "Nenhum deck encontrado."
+            : "Ainda não há decks publicados. Seus decks podem continuar privados até você decidir compartilhar."}
+        </p>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {filtered.map((s) => (
+          <Link
+            key={s.id}
+            to={"/share/" + s.id}
+            className={panel + " flex gap-4 hover:bg-white/10"}
+          >
+            {s.image && (
+              <img
+                src={s.image}
+                alt=""
+                loading="lazy"
+                className="h-28 w-20 rounded-lg object-cover"
+              />
+            )}
+            <div className="min-w-0">
+              <h2 className="break-words font-semibold">{s.title}</h2>
+              <p className="mt-2 text-xs text-slate-400">
+                {s.nickname} · {s.count} cartas
+              </p>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </HubLayout>
+  );
 }
 export function SharedList() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [share, setShare] = useState<Share | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
+  const [stores, setStores] = useState(false);
+  const [manual, setManual] = useState("");
+  const own = useHubStore((s) =>
+    s.decks.find((d) => d.shareId === id && !d.deletedAt),
+  );
   useEffect(() => {
-    fetch('/api/event/shares/' + encodeURIComponent(id || ''))
-      .then((r) => { if (!r.ok) throw new Error('Lista não encontrada.'); return r.json(); })
-      .then((data: { share: Share }) => setShare(data.share))
-      .catch((err: Error) => setError(err.message));
+    let active = true;
+    api<{ share: Share }>("shares/" + encodeURIComponent(id || ""))
+      .then(({ share }) => {
+        if (active)
+          setShare({
+            ...share,
+            cards: share.cards.map((c) => ({
+              ...c,
+              quantity: c.quantity || 1,
+              section: c.section || "main",
+            })),
+          });
+      })
+      .catch((e: Error) => {
+        if (active) setError(e.message);
+      });
+    return () => {
+      active = false;
+    };
   }, [id]);
-  return <div className={shell}><Brand /><main className="mx-auto max-w-3xl space-y-5 px-4 py-8">
-    {error && <p role="alert">{error}</p>}
-    {!share && !error && <p>Carregando...</p>}
-    {share && <><div><h1 className="text-2xl font-bold">{share.title}</h1><p className="text-sm text-slate-400">{share.nickname} · {share.cards.length} cartas · Snapshot compartilhado</p></div>
-    <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">{share.cards.map((c, i) =>
-      <div key={c.oracleId + String(i)} className="space-y-1">{c.image ? <img src={c.image} loading="lazy" alt={c.name} className="w-full rounded-md" /> : <div className="aspect-[5/7] rounded bg-white/10" />}
-      <p className="break-words text-[11px] leading-tight">{c.name}</p><p className="text-[10px] text-slate-500">{c.setCode?.toUpperCase()} {c.collectorNumber}</p></div>)}</div>
-    <div className="flex flex-wrap gap-2"><button className={ghost} onClick={() => void navigator.clipboard?.writeText(window.location.href)}>Copiar link</button>
-      <button className={ghost} onClick={() => void navigator.clipboard?.writeText(share.cards.map((c) => '1 ' + c.name).join('\n'))}>Copiar lista</button>
-      <Link to="/swipe" className={button}>Descobrir cartas</Link></div></>}
-  </main></div>;
+  function saveCopy(print = false) {
+    if (!share) return;
+    const d = {
+      ...makeDeck(share.title, share.cards),
+      nickname: share.nickname,
+    };
+    useHubStore.getState().save(d);
+    navigate(print ? "/print?deck=" + d.id : "/decks/" + d.id);
+  }
+  return (
+    <HubLayout>
+      <Link className="text-sm text-indigo-300" to="/community">
+        ← Explorar decks
+      </Link>
+      {error && (
+        <div className={panel} role="alert">
+          <h1 className="text-xl font-bold">Este link não está disponível</h1>
+          <p className="mt-2 text-sm text-slate-400">
+            Ele pode ter sido desativado ou removido pelo autor.
+          </p>
+          <Link className={ghost + " mt-4"} to="/decks">
+            Meus decks
+          </Link>
+        </div>
+      )}
+      {!share && !error && <p role="status">Carregando deck…</p>}
+      {share && (
+        <>
+          <div>
+            <p className="hub-eyebrow">DECK COMPARTILHADO</p>
+            <h1 className="text-3xl font-bold">{share.title}</h1>
+            <p className="mt-2 text-sm text-slate-400">
+              {share.nickname} ·{" "}
+              {share.cards.reduce((n, c) => n + c.quantity, 0)} cartas
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {own ? (
+              <Link className={button} to={"/decks/" + own.id}>
+                Editar meu deck
+              </Link>
+            ) : (
+              <button className={button} onClick={() => saveCopy()}>
+                Salvar uma cópia em Meus decks
+              </button>
+            )}
+            <button
+              className={ghost}
+              onClick={() =>
+                void copy(window.location.href)
+                  .then(setStatus)
+                  .catch((e: Error) => setStatus(e.message))
+              }
+            >
+              Copiar link
+            </button>
+            <button
+              className={ghost}
+              onClick={() => {
+                setManual(listText(share.cards));
+                void copy(listText(share.cards))
+                  .then(setStatus)
+                  .catch((e: Error) => setStatus(e.message));
+              }}
+            >
+              Copiar lista
+            </button>
+            <button
+              className={ghost}
+              onClick={() => {
+                download(share.title + ".txt", listText(share.cards));
+                setStatus("Download iniciado.");
+              }}
+            >
+              Baixar TXT
+            </button>
+            <button className={ghost} onClick={() => setStores(true)}>
+              Links de lojas
+            </button>
+            <button
+              className={ghost}
+              onClick={() =>
+                own ? navigate("/print?deck=" + own.id) : saveCopy(true)
+              }
+            >
+              Imprimir / PDF
+            </button>
+          </div>
+          {status && (
+            <p role="status" className="text-sm text-indigo-200">
+              {status}
+            </p>
+          )}
+          {manual && (
+            <textarea
+              className={field}
+              readOnly
+              aria-label="Lista para copiar"
+              value={manual}
+              onFocus={(e) => e.target.select()}
+            />
+          )}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {share.cards.map((c, i) => (
+              <a
+                href={toCard(c).scryfallUri}
+                target="_blank"
+                rel="noreferrer"
+                key={i}
+                className="space-y-2"
+              >
+                {c.image ? (
+                  <img
+                    src={c.image}
+                    loading="lazy"
+                    alt={c.name}
+                    className="w-full rounded-lg"
+                  />
+                ) : (
+                  <div className="flex aspect-[5/7] items-center justify-center rounded-lg bg-indigo-500/10 p-3 text-center text-sm">
+                    {c.name}
+                  </div>
+                )}
+                <p className="text-xs">
+                  {c.quantity}× {c.name}
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  {c.section === "commander"
+                    ? "Comandante · "
+                    : c.section === "sideboard"
+                      ? "Sideboard · "
+                      : ""}
+                  {c.setCode?.toUpperCase()} {c.collectorNumber}
+                </p>
+              </a>
+            ))}
+          </div>
+          {stores && (
+            <CardTutorExport
+              cards={share.cards.map((c) => ({ ...toCard(c), addedAt: 0 }))}
+              onClose={() => setStores(false)}
+            />
+          )}
+        </>
+      )}
+    </HubLayout>
+  );
 }
 export function PrintBinder() {
-  return <div className="flex h-screen flex-col overflow-hidden bg-[#0c0f18] text-white"><Brand />
-    <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-2 text-xs text-slate-300"><span>Print Binder · selecionar versões e gerar PDF</span><a href="/binder/" target="_blank" rel="noreferrer" className="text-indigo-300 underline">Abrir tela cheia</a></div>
-    <iframe title="Print Binder" src="/binder/" className="min-h-0 w-full flex-1 border-0" />
-  </div>;
+  const [search] = useSearchParams();
+  const decks = useHubStore((s) => s.decks);
+  const d = decks.find((d) => d.id === search.get("deck") && !d.deletedAt);
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [status, setStatus] = useState("");
+  const fill = () => {
+    if (!d) return;
+    try {
+      const input =
+        frame.current?.contentDocument?.querySelector<HTMLTextAreaElement>(
+          "textarea",
+        );
+      if (input) {
+        const name =
+          frame.current?.contentDocument?.querySelector<HTMLInputElement>(
+            "#binder-name",
+          );
+        if (name) {
+          name.value = d.title;
+          name.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        input.value = d.cards
+          .flatMap((c) =>
+            Array.from(
+              { length: c.quantity },
+              () =>
+                c.name +
+                (c.setCode
+                  ? ` (${c.setCode.toUpperCase()})${c.collectorNumber ? " " + c.collectorNumber : ""}`
+                  : ""),
+            ),
+          )
+          .join("\n");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        setStatus(
+          "Deck carregado no Binder. Confira a lista e avance para escolher versões.",
+        );
+      } else
+        setStatus(
+          "O Binder ainda está carregando. Tente carregar o deck novamente.",
+        );
+    } catch {
+      setStatus("Copie a lista e cole no campo do Binder.");
+    }
+  };
+  return (
+    <div className="hub-page flex h-full flex-col">
+      <Brand />
+      <div className="flex flex-wrap items-center gap-2 border-b border-white/10 p-3 text-xs">
+        <Link className="text-indigo-300" to={d ? "/decks/" + d.id : "/decks"}>
+          ← {d ? d.title : "Meus decks"}
+        </Link>
+        <span className="text-slate-500">Print Binder</span>
+        {d && (
+          <>
+            <button className={ghost} onClick={fill}>
+              Carregar deck no Binder
+            </button>
+            <button
+              className={ghost}
+              onClick={() =>
+                void copy(listText(d.cards))
+                  .then(setStatus)
+                  .catch((e: Error) => setStatus(e.message))
+              }
+            >
+              Copiar lista
+            </button>
+          </>
+        )}
+        <a
+          className="text-indigo-300 underline"
+          href="/binder/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Tela cheia
+        </a>
+        {status && (
+          <p role="status" className="w-full text-indigo-200">
+            {status}
+          </p>
+        )}
+      </div>
+      <iframe
+        ref={frame}
+        title="Print Binder"
+        src="/binder/"
+        onLoad={fill}
+        className="min-h-0 w-full flex-1 border-0"
+      />
+    </div>
+  );
+}
+export function Feedback() {
+  const [message, setMessage] = useState("");
+  const [feature, setFeature] = useState("Geral");
+  const [rating, setRating] = useState("5");
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [consent, setConsent] = useState(false);
+  async function send(e: FormEvent, register = false) {
+    e.preventDefault();
+    setBusy(true);
+    setStatus("");
+    try {
+      await api(
+        register ? "register" : "feedback",
+        "POST",
+        register
+          ? { name, email, consent }
+          : { message, feature, rating: Number(rating) },
+      );
+      setStatus(
+        register
+          ? "Cadastro de novidades recebido. Isso não cria uma conta de acesso."
+          : "Feedback enviado. Obrigado!",
+      );
+      if (!register) setMessage("");
+    } catch (e) {
+      setStatus((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <HubLayout>
+      <h1 className="text-3xl font-bold">Ajude a melhorar</h1>
+      <form className={panel + " space-y-4"} onSubmit={(e) => void send(e)}>
+        <label className="block text-sm">
+          Ferramenta
+          <select
+            className={field + " mt-2"}
+            value={feature}
+            onChange={(e) => setFeature(e.target.value)}
+          >
+            {[
+              "Geral",
+              "Meus decks",
+              "Swiper",
+              "Tracker",
+              "Print Binder",
+              "Lojas",
+              "Compartilhamento",
+              "Conta",
+            ].map((f) => (
+              <option key={f}>{f}</option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm">
+          Nota
+          <select
+            className={field + " mt-2"}
+            value={rating}
+            onChange={(e) => setRating(e.target.value)}
+          >
+            {[5, 4, 3, 2, 1].map((n) => (
+              <option key={n}>{n}</option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm">
+          O que você mudaria?
+          <textarea
+            className={field + " mt-2 min-h-28"}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            required
+            minLength={8}
+            maxLength={1500}
+          />
+        </label>
+        <button className={button} disabled={busy}>
+          Enviar feedback
+        </button>
+      </form>
+      <details className={panel}>
+        <summary className="cursor-pointer font-semibold">
+          Receber novidades por email (opcional)
+        </summary>
+        <form className="mt-4 space-y-4" onSubmit={(e) => void send(e, true)}>
+          <label className="block text-sm">
+            Nome
+            <input
+              className={field + " mt-2"}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              maxLength={90}
+            />
+          </label>
+          <label className="block text-sm">
+            Email
+            <input
+              className={field + " mt-2"}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              maxLength={254}
+            />
+          </label>
+          <label className="flex gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+              required
+            />
+            Autorizo contato sobre o projeto. Meus dados não serão publicados.
+          </label>
+          <button className={ghost} disabled={busy || !consent}>
+            Receber novidades
+          </button>
+        </form>
+      </details>
+      {status && <p role="status">{status}</p>}
+    </HubLayout>
+  );
 }
 export function EventAdmin() {
-  const [secret, setSecret] = useState('');
-  const [data, setData] = useState<{ leads: { name: string; email: string; nickname: string; createdAt: string }[]; feedback: { message: string; feature: string; rating: number; createdAt: string }[]; shares: Share[] } | null>(null);
-  const [error, setError] = useState('');
+  const [secret, setSecret] = useState("");
+  const [data, setData] = useState<{
+    leads: {
+      name: string;
+      email: string;
+      nickname: string;
+      createdAt: string;
+    }[];
+    feedback: {
+      message: string;
+      feature: string;
+      rating: number;
+      createdAt: string;
+    }[];
+    shares: Share[];
+  } | null>(null);
+  const [error, setError] = useState("");
   async function loadAdmin(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault(); setError('');
+    e.preventDefault();
+    setError("");
     try {
-      const r = await fetch('/api/event/admin', { headers: { 'x-admin-key': secret }, cache: 'no-store' });
-      if (!r.ok) throw new Error('Acesso negado ou falha na conexão.');
+      const r = await fetch("/api/event/admin", {
+        headers: { "x-admin-key": secret },
+        cache: "no-store",
+      });
+      if (!r.ok) throw new Error("Acesso negado ou falha na conexão.");
       setData(await r.json());
-    } catch (err) { setError(err instanceof Error ? err.message : 'Erro.'); }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro.");
+    }
   }
   function exportData() {
     if (!data) return;
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'magic-hub-event.json'; a.click();
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "magic-hub-event.json";
+    a.click();
     URL.revokeObjectURL(url);
   }
-  return <div className={shell}><Brand /><main className="mx-auto max-w-3xl space-y-5 px-4 py-8">
-    <h1 className="text-2xl font-bold">Área do organizador</h1>
-    <form onSubmit={(e) => void loadAdmin(e)} className="flex gap-2"><input className={field} type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="Chave de administração" aria-label="Chave de administração" /><button className={button}>Entrar</button></form>
-    {error && <p role="alert" className="text-rose-300">{error}</p>}
-    {data && <><div className="flex flex-wrap gap-3"><Pill>{data.leads.length} cadastros</Pill><Pill>{data.feedback.length} feedbacks</Pill><Pill>{data.shares.length} listas</Pill></div>
-      <button className={button} onClick={exportData}>Baixar todos os dados (JSON)</button>
-      <h2 className="text-xl font-semibold">Cadastros</h2><div className="space-y-2">{data.leads.slice().reverse().map((x) => <div key={x.email} className={panel}><b>{x.name}</b><p className="break-all text-sm text-slate-300">{x.email}</p><p className="text-xs text-slate-500">{x.nickname} · {x.createdAt}</p></div>)}</div>
-      <h2 className="text-xl font-semibold">Feedbacks</h2><div className="space-y-2">{data.feedback.slice().reverse().map((x, i) => <div key={i} className={panel}><p>{x.message}</p><p className="mt-2 text-xs text-slate-400">{x.feature} · nota {x.rating} · {x.createdAt}</p></div>)}</div>
-    </>}
-  </main></div>;
+  return (
+    <div className={shell}>
+      <Brand />
+      <main className="mx-auto max-w-3xl space-y-5 px-4 py-8">
+        <h1 className="text-2xl font-bold">Área do organizador</h1>
+        <form onSubmit={(e) => void loadAdmin(e)} className="flex gap-2">
+          <input
+            className={field}
+            type="password"
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+            placeholder="Chave de administração"
+            aria-label="Chave de administração"
+          />
+          <button className={button}>Entrar</button>
+        </form>
+        {error && (
+          <p role="alert" className="text-rose-300">
+            {error}
+          </p>
+        )}
+        {data && (
+          <>
+            <div className="flex flex-wrap gap-3">
+              <Pill>{data.leads.length} cadastros</Pill>
+              <Pill>{data.feedback.length} feedbacks</Pill>
+              <Pill>{data.shares.length} listas</Pill>
+            </div>
+            <button className={button} onClick={exportData}>
+              Baixar todos os dados (JSON)
+            </button>
+            <h2 className="text-xl font-semibold">Cadastros</h2>
+            <div className="space-y-2">
+              {data.leads
+                .slice()
+                .reverse()
+                .map((x) => (
+                  <div key={x.email} className={panel}>
+                    <b>{x.name}</b>
+                    <p className="break-all text-sm text-slate-300">
+                      {x.email}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {x.nickname} · {x.createdAt}
+                    </p>
+                  </div>
+                ))}
+            </div>
+            <h2 className="text-xl font-semibold">Feedbacks</h2>
+            <div className="space-y-2">
+              {data.feedback
+                .slice()
+                .reverse()
+                .map((x, i) => (
+                  <div key={i} className={panel}>
+                    <p>{x.message}</p>
+                    <p className="mt-2 text-xs text-slate-400">
+                      {x.feature} · nota {x.rating} · {x.createdAt}
+                    </p>
+                  </div>
+                ))}
+            </div>
+          </>
+        )}
+      </main>
+    </div>
+  );
 }

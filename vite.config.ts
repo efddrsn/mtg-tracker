@@ -6,6 +6,8 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
+      '/api/event': 'http://localhost:3000',
+      '/binder': 'http://localhost:3000',
       '/api/stores': 'http://localhost:3000',
       '/api/prices': 'http://localhost:3000',
       '/api/recommander': {
