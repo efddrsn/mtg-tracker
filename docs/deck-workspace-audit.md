@@ -54,7 +54,7 @@ Implemented scope: 27/30 (90%) of the bounded audit. UI verification and any lim
 ## Validation
 
 - Build and ESLint.
-- 67 automated tests, including new quantity/section/printing round trips, invalid imports/backups, latest-edit/tombstone merging, share authorization/revocation/restore, account isolation, cookie protection, logout invalidation and legacy opt-in privacy.
+- 68 automated tests, including new quantity/section/printing round trips, invalid imports/backups, latest-edit/tombstone merging, share authorization/revocation/restore, account isolation, cookie protection, logout invalidation and legacy opt-in privacy.
 - Browser end-to-end validation: recorded in the follow-up validation section after deployment.
 
 ## Browser verification — production, 2026-11-02
@@ -69,12 +69,20 @@ Observed in the published UI:
 - Store links opened from saved deck; CardTutor and Mox Vault links and copy action verified. Third-party prices/stock are not asserted as verified by opening these links.
 - Deck → Binder auto-fill retained the selected deck name and all 38 physical entries.
 - Three-card Binder generated a completed, downloadable A4 PDF (1 page, 551,590 bytes). E2E found the upstream direct-generation form did not strip leading quantities; integration now normalizes pasted text before preparing/generating.
-- Duplicate → trash → restore → library search passed.
+- Duplicate → trash → restore → library search passed. Deleting a shared deck made its old URL unavailable and removed it from gallery search; restoring made it unlisted.
+- Account backup JSON downloaded and imported through the file chooser; both 37-card decks remained single copies.
 
 Account password submission is covered by API integration tests; browser validation does not imply a user signed in or supplied credentials. Live multi-device/conflict UX, mobile gesture ergonomics and third-party store inventory remain outside these completed UI checks.
 
-## Recommendation investigation
+## Recommendation investigation and final integration
 
-A direct live cold-start response for Urza returned 25 recommendations, with commander-specific cards and `generic` flags. The old page parser returned zero from current markup because `data-rep`/`data-score` no longer exist. The cold-start proxy had also prioritized that scrape before a healthy API. After a short model batch, the feed could proceed straight to global popularity.
+Production runtime logs confirmed that the old website endpoint returned HTML and 403 from Railway. The old scraper also no longer matched the page. Those failures sent the feed to global EDHREC popularity; they are integration failures, not evidence that the public recommendation model is bad.
 
-Fixes: live API first; modern dedicated Top Picks parsing; complete-pool sort before truncating legacy markup; Top Picks before general popularity on refill; explicit source in the UI; ordinal page rank kept separate from model confidence; a small penalty only for the API's explicit `generic` flag. No arbitrary card-type/color grouping or random shuffle is introduced. Pile-table interaction is recorded in `swiper-table-backlog.md`.
+The current [official API documentation](https://recommander.cards/api/) specifies `https://api.recommander.cards/public-release/api/decks/recommend/top`, a `result_code`/`data` envelope and up to 200 suggestions. A direct request for Urza returned 85 ranked results rather than the website route's 25. The public score has no fixed range and is only comparable within one response.
+
+Final implementation uses this official endpoint, unwraps its envelope, preserves raw scores when no legacy metadata exists, deduplicates concurrent identical requests, caches identical deck queries, debounces new selections and honors upstream rate-limit errors. The live page scraper is removed. The UI labels a model feed separately from general-popularity fallback; no card-type/color grouping or arbitrary random shuffle is introduced. The configurable pile table is recorded in `swiper-table-backlog.md`.
+
+
+The official live Meren evaluation returned 86 cold-start candidates and 147 with ten sacrifice/reanimator seed cards. It found 13 diagnostic synergy matches in the top 25, with no selected-card leaks. These are diagnostic observations, not a universal quality score. Tracker life/mana/storm increment/decrement, settings navigation and return to Hub also passed in the browser.
+
+![Published home and deck continuity](qa/hub-home.jpg)

@@ -6,20 +6,16 @@ import {
   fetchLigaMagicPrice,
   ligaMagicUrl,
 } from "./server/ligamagic-price.mjs";
-import { fetchCommanderTopPicks } from "./server/recommander-page.mjs";
+import { createRecommanderClient } from "./server/recommander-api.mjs";
 import { createStoreResolver, validateStoreRequest } from "./server/stores.mjs";
 import { createResilientLookup } from "./server/store-fallback.mjs";
 import { handleEventApi } from "./server/event-community.mjs";
 
 const root = join(fileURLToPath(new URL(".", import.meta.url)), "dist");
 const port = Number(process.env.PORT ?? 3000);
-const upstream =
-  process.env.RECOMMANDER_UPSTREAM ??
-  "https://recommander.cards/api/decks/recommend";
+const recommend = createRecommanderClient();
 const brPriceCache = new Map();
 const BR_PRICE_TTL_MS = 6 * 60 * 60 * 1000;
-const commanderPicksCache = new Map();
-const COMMANDER_PICKS_TTL_MS = 6 * 60 * 60 * 1000;
 
 const mime = {
   ".css": "text/css; charset=utf-8",
@@ -37,24 +33,6 @@ function json(res, status, body) {
     "Cache-Control": "no-store",
   });
   res.end(JSON.stringify(body));
-}
-
-async function cachedCommanderTopPicks(oracleId) {
-  const cached = commanderPicksCache.get(oracleId);
-  if (cached && Date.now() - cached.cachedAt < COMMANDER_PICKS_TTL_MS) {
-    return cached.recommendations;
-  }
-  const recommendations = await fetchCommanderTopPicks(
-    oracleId,
-    AbortSignal.timeout(15_000),
-  );
-  if (recommendations.length > 0) {
-    commanderPicksCache.set(oracleId, {
-      cachedAt: Date.now(),
-      recommendations,
-    });
-  }
-  return recommendations;
 }
 
 async function proxyRecommander(req, res) {
@@ -80,63 +58,15 @@ async function proxyRecommander(req, res) {
     return;
   }
 
-  if (
-    new URL(req.url, "http://localhost").pathname === "/api/recommander/top"
-  ) {
-    try {
-      const recommendations = await cachedCommanderTopPicks(
-        requestBody.commander,
-      );
-      json(res, 200, { recommendations, source: "commander-top-picks" });
-    } catch {
-      json(res, 502, { message: "Top picks indisponíveis." });
-    }
-    return;
-  }
-  const canUseCommanderPage =
-    requestBody.card_format === "oracle_id" &&
-    typeof requestBody.commander === "string";
   try {
-    const response = await fetch(upstream, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body,
-      signal: AbortSignal.timeout(12000),
-    });
-    const parsed = await response.json();
-    if (!response.ok) throw new Error(`Recommander HTTP ${response.status}`);
-    if (
-      Array.isArray(parsed.recommendations) &&
-      parsed.recommendations.length
-    ) {
-      // Even a cold deck gets the live model first. Never short-circuit a
-      // healthy API with scraped page data or pretend generic fallback is it.
-      json(res, 200, { ...parsed, source: "model" });
-      return;
-    }
+    json(res, 200, await recommend(requestBody));
   } catch (error) {
-    console.warn("recommander_model_fallback", error.message);
+    console.warn("recommander_public_api_error", error.message);
+    if (error.retryAfter) res.setHeader("Retry-After", error.retryAfter);
+    json(res, error.status === 429 ? 429 : 502, {
+      message: "Recomendações por sinergia indisponíveis no momento.",
+    });
   }
-  if (canUseCommanderPage) {
-    try {
-      const recommendations = await cachedCommanderTopPicks(
-        requestBody.commander,
-      );
-      if (recommendations.length) {
-        json(res, 200, { recommendations, source: "commander-top-picks" });
-        return;
-      }
-    } catch (error) {
-      console.warn("recommander_page_fallback", error.message);
-    }
-  }
-  json(res, 502, {
-    message:
-      "Recomendações por sinergia indisponíveis. Usando popularidade geral.",
-  });
 }
 
 async function brazilPrice(req, res) {

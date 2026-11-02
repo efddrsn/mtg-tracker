@@ -25,7 +25,6 @@ interface ApiResponse {
 }
 
 export interface RecommanderQuery {
-  source?: "top-picks";
   commander: DeckCard;
   deck: DeckCard[];
   config: DeckConfig;
@@ -45,7 +44,11 @@ export class RecommanderError extends Error {
 // small confidence correction keeps the model's personalization dominant while
 // demoting cold-start outliers. The curve saturates at 1,000 commander decks.
 export function adjustedRecommendationScore(item: ApiRecommendation): number {
-  if (item.score_kind === "ordinal") return item.score;
+  if (
+    item.score_kind === "ordinal" ||
+    (item.commander_count == null && item.lift == null && item.generic == null)
+  )
+    return item.score;
   const count = Math.max(0, item.commander_count ?? 0);
   const confidence = Math.min(1, Math.log10(count + 1) / 3);
   const lift = Math.max(-2, Math.min(3, item.lift ?? 0));
@@ -76,18 +79,15 @@ export async function fetchRecommanderRecommendations(
   query: RecommanderQuery,
   signal?: AbortSignal,
 ): Promise<DeckCard[]> {
-  const response = await fetch(
-    RECOMMENDER_PROXY_URL + (query.source === "top-picks" ? "/top" : ""),
-    {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(buildRecommanderPayload(query)),
-      signal,
+  const response = await fetch(RECOMMENDER_PROXY_URL, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify(buildRecommanderPayload(query)),
+    signal,
+  });
 
   let body: ApiResponse;
   try {

@@ -4,6 +4,12 @@ A mobile-first Magic: The Gathering toolkit: a game tracker for floating mana,
 storm count, turn phases, and custom counters — plus a swipe-based deck-building
 recommendation app.
 
+## Deck workspace (`/decks`)
+
+Import text or TXT files with quantities, sections and printing IDs. Save named decks, edit, duplicate, trash/restore, copy/download TXT, publish an owner-controlled stable link or keep a deck private. Shared decks connect to store links and Binder; open a saved deck in Swiper and save new choices back. Optional email/password accounts sync private decks; JSON backup works without an account. Contact/news signup is separate from login. Password recovery is not yet available.
+
+Audit, priorities, E2E evidence and remaining gaps: [deck workspace audit](docs/deck-workspace-audit.md). Proposed configurable pile-table interaction: [Swiper backlog](docs/swiper-table-backlog.md).
+
 ## Swipe Deck Builder (`/swipe`)
 
 A Tinder-style card-discovery feed for building decks. The card image fills
@@ -20,7 +26,7 @@ almost the entire screen; everything else stays out of the way.
 - **Hold for a full-card preview** — long-press any list row
 - **Printing picker** — choose a specific set/art from a mobile carousel adapted from the Binder Generator UI
 - **Deck-aware Commander recommendations** — ranked by
-  [Recommander](https://recommander.cards/) from the commander and cards already
+  [Recommander public API](https://recommander.cards/api/) from the commander and cards already
   selected; Scryfall's EDHREC order remains the fallback and powers other formats
 - **Commander-first flow** — in Commander, you swipe through legal commanders
   first; picking one **locks the deck to its color identity** and seeds the rest
@@ -29,8 +35,8 @@ almost the entire screen; everything else stays out of the way.
   dismissible overlay lets you search by name and jump straight to it
 - **Add a card by name** — the same search-and-pick overlay, available from the
   deck sheet, to drop any specific card straight into your deck
-- **Decklist import** — paste a list you already own (Moxfield/Archidekt style);
-  it seeds your deck, sets the color filter, and teaches the recommender
+- **Decklist import** — import in My decks, preserving quantities and versions;
+  open the saved deck in Swiper to seed recommendations
 - **Distinctive openers** — non-Commander formats start with famous *colored*
   cards (rare/mythic), skipping generic colorless staples like Sol Ring
 - **Arena filter** — restrict to cards available on MTG Arena (`game:arena`),
