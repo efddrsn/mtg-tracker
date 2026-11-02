@@ -59,6 +59,18 @@ export function SwipeDeck() {
     nw: 'maybe', ne: 'wishlist', sw: 'deck', se: 'owned',
   });
   const [loadedId, setLoadedId] = useState<string | null>(null);
+  const [repositioning, setRepositioning] = useState(false);
+  const [draggingCard, setDraggingCard] = useState(false);
+  const ACTIVE_DISTANCE = 18;
+  function destinationFor(x: number, y: number): SwipeCorner | 'reject' | null {
+    if (Math.hypot(x,y) < ACTIVE_DISTANCE) return null;
+    // Fixed discard lane: horizontal left or diagonal lower-left.
+    if (x < -ACTIVE_DISTANCE && (y >= -28 || y > Math.abs(x) * .3)) return 'reject';
+    if (x < -ACTIVE_DISTANCE && y < -28) return 'nw';
+    if (x > ACTIVE_DISTANCE && y < -28) return 'ne';
+    if (x > ACTIVE_DISTANCE && y >= -28) return 'se';
+    return null;
+  }
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [workspaceMenu, setWorkspaceMenu] = useState(false);
@@ -287,11 +299,12 @@ export function SwipeDeck() {
   // --- Pointer gesture handling ---------------------------------------------
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (sheetOpen || busy.current || !top) return;
+    if (sheetOpen || repositioning || busy.current || !top) return;
     pointerId.current = e.pointerId;
     start.current = { x: e.clientX, y: e.clientY };
     axis.current = null;
     setAnimate(false);
+    setDraggingCard(false);
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -301,13 +314,14 @@ export function SwipeDeck() {
 
     if (axis.current === null) {
       if (Math.abs(dx) < AXIS_LOCK && Math.abs(dy) < AXIS_LOCK) return;
-      axis.current = Math.abs(dx) > Math.abs(dy) * 0.55 ? 'h' : 'v';
+      axis.current = Math.abs(dx) > Math.abs(dy) * 0.35 ? 'h' : 'v';
       try {
         (e.target as Element).setPointerCapture?.(e.pointerId);
       } catch { /* ignore */ }
     }
 
     if (axis.current === 'h') {
+      setDraggingCard(true);
       setDrag({ x: dx, y: dy });
     } else if (dy > 0) {
       setConfigDragY(Math.min(dy, window.innerHeight));
@@ -324,24 +338,15 @@ export function SwipeDeck() {
     const locked = axis.current;
     axis.current = null;
 
+    setDraggingCard(false);
     if (locked === 'h') {
-      const threshold = (window.innerWidth || 400) * 0.26;
-      if (Math.abs(dx) > threshold) {
-        if (Math.abs(dy) < 35 && dx < 0) commit('reject');
-        else if (Math.abs(dy) < 35 && dx > 0) {
-          if (source !== 'recommendations') commit('keep');
-          else commit(corners.ne, 'ne');
-        }
-        else {
-          const corner: SwipeCorner = dy < 0
-            ? (dx < 0 ? 'nw' : 'ne')
-            : (dx < 0 ? 'sw' : 'se');
-          commit(corners[corner], corner);
-        }
-      } else {
-        setAnimate(true);
-        setDrag({ x: 0, y: 0 });
-      }
+      const threshold = (window.innerWidth || 400) * .23;
+      if (Math.hypot(dx, dy) > threshold) {
+        const dest = destinationFor(dx,dy);
+        if (dest === 'reject') commit('reject');
+        else if (dest) commit(corners[dest], dest);
+        else { setAnimate(true); setDrag({ x:0, y:0 }); }
+      } else { setAnimate(true); setDrag({ x:0, y:0 }); }
     } else if (locked === 'v') {
       const openThreshold = (window.innerHeight || 700) * 0.16;
       if (dy > openThreshold) {
@@ -481,22 +486,60 @@ export function SwipeDeck() {
             </option>)}
           </select>
         </div>
-        {CORNERS.map(corner => (
-          <div className={`swipe-corner swipe-corner-${corner.id}`} key={corner.id}
-            onPointerDown={e => e.stopPropagation()}
-            onPointerMove={e => e.stopPropagation()}
-            onPointerUp={e => e.stopPropagation()}
-          >
-            <select
-              aria-label={`Destino: ${corner.title}`}
-              value={corners[corner.id]}
-              onChange={e => chooseCorner(corner.id, e.target.value as SwipePile)}
-            >
-              {PILES.map(pile => <option key={pile.id} value={pile.id}>{pile.title}</option>)}
-            </select>
+        <button type="button"
+          className={`swipe-corner swipe-corner-sw swipe-trash ${draggingCard && destinationFor(drag.x,drag.y)==='reject' ? 'swipe-target-active' : ''}`}
+          onClick={() => chooseSource('recommendations')}
+          onPointerDown={e=>e.stopPropagation()}
+          aria-label="Descarte fixo: arraste à esquerda ou abaixo à esquerda"
+          title="Descarte: esquerda ou diagonal inferior esquerda">
+          <span>Descartar</span><span>×</span>
+        </button>
+        {CORNERS.filter(c=>c.id!=='sw').map(corner => (
+          <button type="button"
+            className={`swipe-corner swipe-corner-${corner.id} ${draggingCard && destinationFor(drag.x,drag.y)===corner.id ? 'swipe-target-active' : ''} ${source===corners[corner.id] ? 'swipe-target-center' : ''}`}
+            key={corner.id}
+            onClick={() => chooseSource(corners[corner.id])}
+            onPointerDown={e=>e.stopPropagation()}
+            aria-label={`Centralizar ${PILES.find(p=>p.id===corners[corner.id])?.title}`}
+            title="Toque para centralizar">
+            <span>{PILES.find(p=>p.id===corners[corner.id])?.title}</span>
             <span>{pileCount(corners[corner.id])}</span>
-          </div>
+          </button>
         ))}
+        <button type="button" className="swipe-pile-arrange"
+          onPointerDown={e=>e.stopPropagation()}
+          onClick={()=>setRepositioning(!repositioning)}
+          aria-expanded={repositioning}
+          aria-label="Reorganizar pilhas">
+          {repositioning ? 'Concluir' : 'Organizar'}
+        </button>
+        {repositioning && (
+          <div className="swipe-pile-arranger" onPointerDown={e=>e.stopPropagation()}>
+            <h3>Posição das pilhas</h3>
+            <p>Toque em um destino para reposicioná-lo. O descarte permanece abaixo à esquerda.</p>
+            {CORNERS.filter(c=>c.id!=='sw').map(c=>(
+              <label key={c.id}>
+                {c.title}
+                <select value={corners[c.id]} onChange={e=>{
+                  const next=e.target.value as SwipePile;
+                  const old=corners[c.id];
+                  const other=(['nw','ne','se'] as SwipeCorner[]).find(key=>key!==c.id && corners[key]===next);
+                  if(other){ chooseCorner(c.id,next); window.queueMicrotask(()=> {
+                    const current=useHubStore.getState().decks.find(d=>d.id===loadedId);
+                    const latest=current?.swiper?.corners || corners;
+                    const rearranged={...latest,[c.id]:next,[other]:old};
+                    setCorners(rearranged);
+                    if(loadedId) configureSwiperDeck(loadedId,{corners:rearranged});
+                  }); }
+                  else chooseCorner(c.id,next);
+                }}>
+                  {PILES.map(p=><option value={p.id} key={p.id}>{p.title}</option>)}
+                </select>
+              </label>
+            ))}
+            <button type="button" onClick={()=>setRepositioning(false)}>Concluir</button>
+          </div>
+        )}
         {top && Math.abs(drag.x) > 8 && (
           <div
             className={`swipe-decision-overlay ${drag.x > 0 ? 'swipe-decision-positive' : 'swipe-decision-negative'}`}
