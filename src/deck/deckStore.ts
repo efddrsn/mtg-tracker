@@ -116,7 +116,10 @@ export const useDeckStore = create<DeckState>()(
             .some((key) => (key === list ? next : s[key]).some((c) => c.oracleId === oracleId));
           return {
             [list]: next,
-            commander: list === 'deck' && s.commander?.oracleId === oracleId ? null : s.commander,
+            commander: list === 'deck' && s.commander?.oracleId === oracleId &&
+              (!exactCard || samePrinting(s.commander, exactCard))
+              ? (next.find(c => c.oracleId === oracleId) || null)
+              : s.commander,
             rejected: remaining
               ? s.rejected
               : s.rejected.filter((id) => id !== oracleId),
@@ -300,7 +303,8 @@ export const useDeckStore = create<DeckState>()(
             );
             return {
               [list]: replaceCard(s[list]),
-              commander: list === 'deck' && s.commander?.oracleId === oracleId
+              commander: list === 'deck' && s.commander?.oracleId === oracleId &&
+                (!original || samePrinting(s.commander, original))
                 ? { ...printing, addedAt: s.commander.addedAt }
                 : s.commander,
             };
