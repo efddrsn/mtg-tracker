@@ -17,6 +17,7 @@ export type SwipePile = "deck" | "wishlist" | "owned" | "maybe";
 export type SwipeSource = "recommendations" | SwipePile;
 export type SwipeCorner = "nw" | "ne" | "sw" | "se";
 export type SwipeSession = {
+  deck?: HubCard[];
   wishlist: HubCard[];
   owned: HubCard[];
   maybe: HubCard[];
