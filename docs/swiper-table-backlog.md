@@ -1,26 +1,33 @@
-# Swiper as a card table — product backlog
+# Swiper as a card table — implementation
 
-Eric's direction (2026-11-02): treat Swiper as a top-down table, with piles the player assigns to the four corners. Each corner displays the destination pile and count; recommendation supply displays ∞ or a distinct recommendation-source symbol rather than a fake count.
+Updated 2026-11-02: The Swiper is now scoped to a named, saved deck/list. A player can reopen any deck from **Meus decks** or switch the active workspace in the Swiper header.
 
-## Planned journey
+## Interaction
 
-1. Choose the central source: recommendations, a selected deck, wishlist, owned cards, or maybe.
-2. Assign four corner destinations, including a Maybe pile; never move cards into an ambiguous destination.
-3. Swipe to move/copy according to pile semantics; explicitly distinguish collection ownership from deck membership.
-4. Review an existing pile in the center using keep/remove, with undo and counts updating immediately.
-5. Use a restrained camera transition to shift focus between piles; keep motion optional and accessible keyboard/buttons available.
-6. Persist pile placement per player/device and in account workspace; preserve existing Wishlist/Owned data through migration.
+- Center source: infinite recommendations (∞), deck, wishlist, maybe, or owned. List sources show their actual card count and review progress.
+- Four configurable swipe corner destinations: top-left Maybe, top-right Wishlist, bottom-left Deck, bottom-right Owned by default. Each corner has a visible destination and count.
+- Diagonal swipes send the current card to the shown destination. Straight left passes/removes and straight right keeps during review or uses the right-hand destination during discovery.
+- Ownership and deck inclusion are independent; Owned is never silently removed when a card joins Deck.
+- Review of an existing list supports keep, remove, or moving to another pile; selected printing and quantity are retained. Undo reverses list state and restores the previous review position.
+- Filter sheet still opens on downward vertical gesture, list sheet on upward gesture. No action buttons other than Undo beneath the card.
+- Keyboard: 1–4 select mapped corners, Left passes, Right accepts/keeps, Backspace or Cmd/Ctrl+Z undoes.
+- Brief focus animation when switching the central source; animation disabled by reduced-motion preference.
 
-## Why backlog this interaction redesign
+## Persistence and migration
 
-The corner assignment, central source and copy-vs-move behavior form one interaction model. Adding an isolated diagonal today would conflict with existing sheet-opening gestures and could silently move cards. First complete deck lifecycle and recommendation quality, then prototype this model with the existing libraries as sources/destinations.
+- User choices, four pile contents, source selection, rejected IDs, config, revisions, corner layout and review index are saved in the active `HubDeck.swiper` and synchronized through the existing authenticated deck workspace.
+- Deck and sideboard quantities and selected printing IDs are preserved; no ownership is inferred from deck membership.
+- Existing `mtg-swipe-deck` wishlist, owned cards and revisions are migrated into the active deck on first visit or into a new named `Minhas descobertas` list when no active deck exists. The legacy key is not deleted.
+- Each saved deck/list has independent data; switching workspaces persists the previous state before loading the next.
 
-## Acceptance criteria
+## Remaining enhancements (not part of this release)
 
-- Four user-configurable corner piles, with accessible names/counts and recommendation ∞.
-- Maybe is a real saved collection, usable as source or destination.
-- Center source change never loses a selection or changes recommendation training implicitly.
-- Keep/remove works on a selected existing list; actions preserve quantities and selected printing.
-- Undo restores card, source/destination counts and current source order.
-- Thumb-friendly portrait layout; keyboard alternatives; reduced-motion transition.
-- Local/account persistence and a clear rule for duplicate cards and collection vs deck membership.
+- Arbitrary pile names/positions beyond the four saved built-in destinations.
+- More elaborate tabletop camera translation between separate spatial piles; current source switching uses a minimal focus transition.
+- Durable undo history across browser restarts (undo within the current open session works).
+- Cross-device simultaneous-edit conflict resolution for the same deck.
+- Browser E2E gesture screenshots and physical iOS/Android device validation.
+
+## Validation
+
+GitHub Actions runs the TypeScript build and Vitest suite. Workspace tests cover migration, per-deck isolation, list-versus-ownership semantics, quantity preservation, and corner/source resume. Runtime layout still requires device testing; automated unit tests do not prove precise iOS Safari gesture ergonomics.

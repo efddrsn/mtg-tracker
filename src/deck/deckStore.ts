@@ -11,9 +11,10 @@ import {
 
 export interface SavedCard extends DeckCard {
   addedAt: number;
+  quantity?: number;
 }
 
-export type CardList = 'wishlist' | 'owned';
+export type CardList = 'deck' | 'wishlist' | 'owned' | 'maybe';
 
 export interface ListRevision {
   id: string;
@@ -21,13 +22,17 @@ export interface ListRevision {
   savedAt: number;
   wishlist: SavedCard[];
   owned: SavedCard[];
+  deck?: SavedCard[];
+  maybe?: SavedCard[];
 }
 
 export interface DeckState {
   config: DeckConfig;
-  // Kept as `deck` internally so the recommender continues to consume the
-  // positive preference set. In the UI this is always the wishlist.
+  // Deck membership is the Recommander positive set, separate from wanting
+  // or physically owning a card. Lists are scoped to the active workspace deck.
   deck: SavedCard[];
+  wishlist: SavedCard[];
+  maybe: SavedCard[];
   owned: SavedCard[];
   revisions: ListRevision[];
   commander: SavedCard | null;
@@ -50,16 +55,18 @@ export interface DeckState {
 
   addToWishlist: (card: DeckCard) => void;
   addToOwned: (card: DeckCard) => void;
+  addToMaybe: (card: DeckCard) => void;
+  moveCard: (card: DeckCard, source: CardList | 'recommendations', destination: CardList) => void;
   // Backwards-compatible name used by the recommender/search components.
   addToDeck: (card: DeckCard) => void;
   reject: (card: DeckCard) => void;
   skip: (card: DeckCard) => void;
   importCards: (cards: DeckCard[]) => void;
-  removeFromList: (list: CardList, oracleId: string) => void;
+  removeFromList: (list: CardList, oracleId: string, exactCard?: DeckCard) => void;
   removeFromDeck: (oracleId: string) => void;
   clearList: (list: CardList) => void;
   clearDeck: () => void;
-  updateCardPrinting: (list: CardList, oracleId: string, printing: DeckCard) => void;
+  updateCardPrinting: (list: CardList, oracleId: string, printing: DeckCard, original?: DeckCard) => void;
   saveRevision: (label?: string) => void;
   restoreRevision: (id: string) => void;
   deleteRevision: (id: string) => void;
@@ -74,6 +81,15 @@ function save(card: DeckCard): SavedCard {
   return { ...card, addedAt: Date.now() };
 }
 
+// Oracle identity answers "have I seen this name?"; print identity answers
+// "which particular physical printing in this pile is being moved?".
+function samePrinting(left: DeckCard, right: DeckCard): boolean {
+  if (left.oracleId !== right.oracleId) return false;
+  if (left.setCode || right.setCode || left.collectorNumber || right.collectorNumber)
+    return left.setCode === right.setCode && left.collectorNumber === right.collectorNumber;
+  return left.id === right.id;
+}
+
 export const useDeckStore = create<DeckState>()(
   persist(
     (set, get) => {
@@ -81,18 +97,9 @@ export const useDeckStore = create<DeckState>()(
 
       const addToList = (card: DeckCard, list: CardList) => {
         set((s) => {
-          const target = list === 'wishlist' ? s.deck : s.owned;
-          if (target.some((c) => c.oracleId === card.oracleId)) return s;
-          const saved = save(card);
-          const deck = list === 'wishlist'
-            ? [saved, ...s.deck]
-            : s.deck.filter((c) => c.oracleId !== card.oracleId);
-          const owned = list === 'owned'
-            ? [saved, ...s.owned]
-            : s.owned.filter((c) => c.oracleId !== card.oracleId);
+          if (s[list].some((c) => samePrinting(c, card))) return s;
           return {
-            deck,
-            owned,
+            [list]: [save(card), ...s[list]],
             rejected: s.rejected.includes(card.oracleId)
               ? s.rejected
               : [card.oracleId, ...s.rejected].slice(0, REJECTED_CAP),
@@ -101,23 +108,19 @@ export const useDeckStore = create<DeckState>()(
         });
       };
 
-      const removeFromList = (list: CardList, oracleId: string) => {
+      const removeFromList = (list: CardList, oracleId: string, exactCard?: DeckCard) => {
         set((s) => {
-          const deck = list === 'wishlist'
-            ? s.deck.filter((c) => c.oracleId !== oracleId)
-            : s.deck;
-          const owned = list === 'owned'
-            ? s.owned.filter((c) => c.oracleId !== oracleId)
-            : s.owned;
-          const remainsSaved = deck.some((c) => c.oracleId === oracleId)
-            || owned.some((c) => c.oracleId === oracleId);
+          const next = s[list].filter((c) => !(c.oracleId === oracleId &&
+            (!exactCard || samePrinting(c, exactCard))));
+          const remaining = (['deck', 'wishlist', 'maybe', 'owned'] as const)
+            .some((key) => (key === list ? next : s[key]).some((c) => c.oracleId === oracleId));
           return {
-            deck,
-            owned,
-            commander: s.commander?.oracleId === oracleId && !remainsSaved
-              ? null
+            [list]: next,
+            commander: list === 'deck' && s.commander?.oracleId === oracleId &&
+              (!exactCard || samePrinting(s.commander, exactCard))
+              ? (next.find(c => c.oracleId === oracleId) || null)
               : s.commander,
-            rejected: remainsSaved
+            rejected: remaining
               ? s.rejected
               : s.rejected.filter((id) => id !== oracleId),
           };
@@ -127,6 +130,8 @@ export const useDeckStore = create<DeckState>()(
       return {
         config: { ...DEFAULT_CONFIG },
         deck: [],
+        wishlist: [],
+        maybe: [],
         owned: [],
         revisions: [],
         commander: null,
@@ -198,7 +203,6 @@ export const useDeckStore = create<DeckState>()(
               deck: s.deck.some((c) => c.oracleId === card.oracleId)
                 ? s.deck
                 : [saved, ...s.deck],
-              owned: s.owned.filter((c) => c.oracleId !== card.oracleId),
               rejected: s.rejected.includes(card.oracleId)
                 ? s.rejected
                 : [card.oracleId, ...s.rejected].slice(0, REJECTED_CAP),
@@ -213,7 +217,34 @@ export const useDeckStore = create<DeckState>()(
 
         addToWishlist: (card) => addToList(card, 'wishlist'),
         addToOwned: (card) => addToList(card, 'owned'),
-        addToDeck: (card) => addToList(card, 'wishlist'),
+        addToMaybe: (card) => addToList(card, 'maybe'),
+        addToDeck: (card) => addToList(card, 'deck'),
+        moveCard: (card, source, destination) => {
+          set((s) => {
+            const from = source === 'recommendations' ? null : source;
+            const sourceCard = from ? s[from].find((c) => samePrinting(c, card)) : null;
+            const saved = sourceCard || save(card);
+            const moved = { ...s } as DeckState;
+            // Owned is independent of membership. All other destinations
+            // move an existing card unless the source is the recommendation feed.
+            if (from && from !== destination && from !== 'owned' && destination !== 'owned') {
+              moved[from] = s[from].filter((c) => !samePrinting(c, card));
+            }
+            if (!s[destination].some((c) => samePrinting(c, card))) {
+              moved[destination] = [saved, ...s[destination]];
+            }
+            moved.rejected = s.rejected.includes(card.oracleId)
+              ? s.rejected
+              : [card.oracleId, ...s.rejected].slice(0, REJECTED_CAP);
+            moved.swipeCount = s.swipeCount + 1;
+            if (from === 'deck' && destination !== 'deck' && destination !== 'owned' &&
+                s.commander?.oracleId === card.oracleId) {
+              moved.commander = null;
+              moved.configVersion = s.configVersion + 1;
+            }
+            return moved;
+          });
+        },
         reject: (card) => {
           set((s) => ({
             rejected: s.rejected.includes(card.oracleId)
@@ -257,24 +288,26 @@ export const useDeckStore = create<DeckState>()(
           bumpConfig();
         },
         removeFromList,
-        removeFromDeck: (oracleId) => removeFromList('wishlist', oracleId),
-        clearList: (list) => set(list === 'wishlist'
-          ? { deck: [], commander: null }
-          : { owned: [] }),
+        removeFromDeck: (oracleId) => removeFromList('deck', oracleId),
+        clearList: (list) => set((s) => ({
+          [list]: [],
+          ...(list === 'deck' ? { commander: null, configVersion: s.configVersion + 1 } : {}),
+        })),
         clearDeck: () => set({ deck: [], commander: null }),
-        updateCardPrinting: (list, oracleId, printing) => {
+        updateCardPrinting: (list, oracleId, printing, original) => {
           set((s) => {
-            const replace = (cards: SavedCard[]) => cards.map((card) =>
-              card.oracleId === oracleId
-                ? { ...printing, addedAt: card.addedAt }
+            const replaceCard = (cards: SavedCard[]) => cards.map((card) =>
+              card.oracleId === oracleId && (!original || samePrinting(card, original))
+                ? { ...printing, addedAt: card.addedAt, quantity: card.quantity || 1 }
                 : card,
             );
-            const deck = list === 'wishlist' ? replace(s.deck) : s.deck;
-            const owned = list === 'owned' ? replace(s.owned) : s.owned;
-            const commander = s.commander?.oracleId === oracleId
-              ? { ...printing, addedAt: s.commander.addedAt }
-              : s.commander;
-            return { deck, owned, commander };
+            return {
+              [list]: replaceCard(s[list]),
+              commander: list === 'deck' && s.commander?.oracleId === oracleId &&
+                (!original || samePrinting(s.commander, original))
+                ? { ...printing, addedAt: s.commander.addedAt }
+                : s.commander,
+            };
           });
         },
         saveRevision: (label) => {
@@ -285,7 +318,9 @@ export const useDeckStore = create<DeckState>()(
               id: `${now}-${number}`,
               label: label?.trim() || `Versão ${number}`,
               savedAt: now,
-              wishlist: s.deck.map((c) => ({ ...c })),
+              deck: s.deck.map((c) => ({ ...c })),
+              wishlist: s.wishlist.map((c) => ({ ...c })),
+              maybe: s.maybe.map((c) => ({ ...c })),
               owned: s.owned.map((c) => ({ ...c })),
             };
             return { revisions: [revision, ...s.revisions].slice(0, REVISION_CAP) };
@@ -295,18 +330,24 @@ export const useDeckStore = create<DeckState>()(
           set((s) => {
             const revision = s.revisions.find((r) => r.id === id);
             if (!revision) return s;
-            const deck = revision.wishlist.map((c) => ({ ...c }));
+            const deck = (revision.deck ?? revision.wishlist).map((c) => ({ ...c }));
+            const wishlist = revision.wishlist.map((c) => ({ ...c }));
+            const maybe = (revision.maybe || []).map((c) => ({ ...c }));
             const owned = revision.owned.map((c) => ({ ...c }));
             const commander = s.commander
               ? [...deck, ...owned].find((c) => c.oracleId === s.commander?.oracleId) ?? null
               : null;
             return {
               deck,
+              wishlist,
+              maybe,
               owned,
               commander,
               rejected: [
                 ...new Set([
                   ...deck.map((c) => c.oracleId),
+                  ...wishlist.map((c) => c.oracleId),
+                  ...maybe.map((c) => c.oracleId),
                   ...owned.map((c) => c.oracleId),
                   ...s.rejected,
                 ]),
@@ -320,19 +361,21 @@ export const useDeckStore = create<DeckState>()(
         })),
 
         isSeen: (oracleId) => {
-          const { deck, owned, rejected } = get();
+          const { deck, wishlist, maybe, owned, rejected } = get();
           return rejected.includes(oracleId)
-            || deck.some((c) => c.oracleId === oracleId)
-            || owned.some((c) => c.oracleId === oracleId);
+            || [deck, wishlist, maybe, owned].some((list) =>
+              list.some((c) => c.oracleId === oracleId));
         },
       };
     },
     {
       name: 'mtg-swipe-deck',
-      version: 7,
+      version: 8,
       partialize: (s) => ({
         config: s.config,
         deck: s.deck,
+        wishlist: s.wishlist,
+        maybe: s.maybe,
         owned: s.owned,
         revisions: s.revisions,
         commander: s.commander,
@@ -344,6 +387,14 @@ export const useDeckStore = create<DeckState>()(
         if (version < 2) s = { ...s, commander: null, swipeCount: 0 };
         if (version < 3) s = { ...s, config: { ...DEFAULT_CONFIG, ...s.config } };
         if (version < 7) s = { ...s, owned: [], revisions: [] };
+        // Legacy `deck` meant Wishlist; never reinterpret it as deck
+        // membership and accidentally change Recommander training inputs.
+        if (version < 8) s = {
+          ...s, wishlist: s.deck ?? [], maybe: [], deck: [],
+          revisions: (s.revisions || []).map(r => ({
+            ...r, deck: [], wishlist: r.wishlist, maybe: [],
+          })),
+        };
         return s as DeckState;
       },
     },

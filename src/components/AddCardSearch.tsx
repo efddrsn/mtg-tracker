@@ -16,8 +16,7 @@ interface AddCardSearchProps {
 export function AddCardSearch({ destination = 'wishlist', onClose }: AddCardSearchProps) {
   const config = useDeckStore((s) => s.config);
   const commanderIdentity = useDeckStore((s) => s.commander?.colorIdentity ?? null);
-  const addToWishlist = useDeckStore((s) => s.addToWishlist);
-  const addToOwned = useDeckStore((s) => s.addToOwned);
+  const moveCard = useDeckStore((s) => s.moveCard);
 
   const search = useCallback(
     (term: string, signal?: AbortSignal) => searchCards(term, config, commanderIdentity, signal),
@@ -25,17 +24,16 @@ export function AddCardSearch({ destination = 'wishlist', onClose }: AddCardSear
   );
 
   const choose = (card: DeckCard) => {
-    if (destination === 'owned') addToOwned(card);
-    else addToWishlist(card);
+    moveCard(card, 'recommendations', destination);
     onClose();
   };
 
   return (
     <CardSearchModal
-      ariaLabel={destination === 'owned' ? 'Add owned card' : 'Add wishlist card'}
+      ariaLabel={`Adicionar carta em ${destination}`}
       placeholder="Search for a card…"
       dismissLabel="Close"
-      hint={`Type a card name to add it to ${destination === 'owned' ? 'Já tenho' : 'Wishlist'}.`}
+      hint={`Pesquise uma carta para adicionar à pilha: ${destination}.`}
       searchFn={search}
       onPick={choose}
       onClose={onClose}

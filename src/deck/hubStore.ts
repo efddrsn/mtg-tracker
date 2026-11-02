@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { DeckCard } from "./scryfall";
+import type { DeckCard, DeckConfig } from "./scryfall";
+import type { ListRevision } from "./deckStore";
 
 export type HubCard = {
   name: string;
@@ -11,6 +12,22 @@ export type HubCard = {
   setCode?: string;
   collectorNumber?: string;
   details?: DeckCard;
+};
+export type SwipePile = "deck" | "wishlist" | "owned" | "maybe";
+export type SwipeSource = "recommendations" | SwipePile;
+export type SwipeCorner = "nw" | "ne" | "sw" | "se";
+export type SwipeSession = {
+  deck?: HubCard[];
+  wishlist: HubCard[];
+  owned: HubCard[];
+  maybe: HubCard[];
+  rejected: string[];
+  swipeCount: number;
+  revisions?: ListRevision[];
+  config: DeckConfig;
+  corners: Record<SwipeCorner, SwipePile>;
+  source: SwipeSource;
+  reviewIndex: number;
 };
 export type HubDeck = {
   id: string;
@@ -26,6 +43,7 @@ export type HubDeck = {
   ownerToken?: string;
   publishedPublic?: boolean;
   publishedAt?: number;
+  swiper?: SwipeSession;
 };
 interface HubState {
   decks: HubDeck[];
@@ -201,10 +219,10 @@ export function listText(cards: HubCard[], versions = true): string {
     })
     .join("\n\n");
 }
-export function fromCards(cards: DeckCard[]): HubCard[] {
+export function fromCards(cards: (DeckCard & { quantity?: number })[]): HubCard[] {
   return cards.map((c) => ({
     name: c.name,
-    quantity: 1,
+    quantity: Math.min(999, Math.max(1, c.quantity || 1)),
     section: "main",
     image: c.image || undefined,
     oracleId: c.oracleId,
@@ -213,12 +231,13 @@ export function fromCards(cards: DeckCard[]): HubCard[] {
     details: c,
   }));
 }
-export function toCard(c: HubCard): DeckCard {
+export function toCard(c: HubCard): DeckCard & { quantity?: number } {
   return (
-    c.details || {
+    c.details ? { ...c.details, quantity: c.quantity } : {
       id: c.oracleId || c.name,
       oracleId: c.oracleId || c.name,
       name: c.name,
+      quantity: c.quantity,
       typeLine: "",
       manaCost: "",
       cmc: 0,

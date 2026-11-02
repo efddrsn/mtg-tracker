@@ -23,11 +23,8 @@ import {
 import type { HubDeck, HubCard } from "../deck/hubStore";
 import { api, copy, download, publish, useAccount } from "../deck/hubApi";
 import { useDeckStore } from "../deck/deckStore";
-import {
-  DEFAULT_CONFIG,
-  type DeckFormat,
-  fetchHubCards,
-} from "../deck/scryfall";
+import { loadSwiperDeck, persistSwiperDeck } from "../deck/swiperWorkspace";
+import { fetchHubCards } from "../deck/scryfall";
 import { CardTutorExport } from "../components/CardTutorExport";
 
 export function MyDecks() {
@@ -36,7 +33,43 @@ export function MyDecks() {
   const [trash, setTrash] = useState(false);
   const [message, setMessage] = useState("");
   const user = useAccount((s) => s.user);
-  const wishlistCount = useDeckStore((s) => s.deck.length);
+  const navigate = useNavigate();
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  async function resume(d: HubDeck) {
+    if (openingId) return;
+    setOpeningId(d.id);
+    let selected = d;
+    try {
+      // Text-only imports need resolved oracle/color identities before the
+      // Recommander can use this deck as its actual recommendation context.
+      if (d.cards.some(c => !c.details)) {
+        const resolved = await fetchHubCards(d.cards);
+        const cards = d.cards.map(c => {
+          const match = resolved.cards.find(x =>
+            x.name.toLowerCase() === c.name.toLowerCase() &&
+            (!c.setCode || x.setCode === c.setCode) &&
+            (!c.collectorNumber || x.collectorNumber === c.collectorNumber)
+          );
+          return match ? {
+            ...c, details: match, image: match.image || undefined,
+            oracleId: match.oracleId, setCode: match.setCode,
+            collectorNumber: match.collectorNumber,
+          } : c;
+        });
+        selected = { ...d, cards, updatedAt: Math.max(Date.now(), d.updatedAt + 1) };
+        useHubStore.getState().save(selected);
+      }
+    } catch {
+      // Existing saved text is still usable offline; it is never discarded.
+    } finally {
+      const active = useHubStore.getState().activeDeckId;
+      if (active && active !== d.id) persistSwiperDeck(active);
+      loadSwiperDeck(selected);
+      setOpeningId(null);
+      navigate('/swipe');
+    }
+  }
+  const wishlistCount = useDeckStore((s) => s.wishlist.length);
   const ownedCount = useDeckStore((s) => s.owned.length);
   const visible = decks
     .filter(
@@ -66,7 +99,7 @@ export function MyDecks() {
   }
   function capture(list: "wishlist" | "owned") {
     const source = useDeckStore.getState();
-    const cards = list === "wishlist" ? source.deck : source.owned;
+    const cards = list === "wishlist" ? source.wishlist : source.owned;
     const d = makeDeck(
       list === "wishlist" ? "Minha wishlist" : "Minha coleção",
       fromCards(cards),
@@ -177,9 +210,12 @@ export function MyDecks() {
                   Restaurar deck
                 </button>
               ) : (
-                <Link className={ghost} to={"/decks/" + d.id}>
-                  Abrir deck
-                </Link>
+                <div className="flex flex-wrap gap-2">
+                  <button className={button} type="button" disabled={openingId !== null} onClick={() => void resume(d)}>
+                    {openingId === d.id ? 'Carregando…' : d.swiper ? 'Retomar Swiper' : 'Abrir no Swiper'}
+                  </button>
+                  <Link className={ghost} to={"/decks/" + d.id}>Editar</Link>
+                </div>
               )}
             </div>
           </article>
@@ -650,36 +686,9 @@ export function DeckEditor() {
                 onClick={() =>
                   void run(async () => {
                     const d = await resolve(save());
-                    const source = useDeckStore.getState();
-                    source.saveRevision("Antes de abrir " + d.title);
-                    useDeckStore.setState({
-                      deck: [],
-                      commander: null,
-                      rejected: [],
-                      config: {
-                        ...DEFAULT_CONFIG,
-                        format: ({
-                          Commander: "commander",
-                          Modern: "modern",
-                          Standard: "standard",
-                          Historic: "historic",
-                          Brawl: "standardbrawl",
-                          Pioneer: "pioneer",
-                          Pauper: "pauper",
-                          Legacy: "legacy",
-                        }[d.format] || "commander") as DeckFormat,
-                      },
-                    });
-                    source.importCards(
-                      d.cards
-                        .filter((c) => c.section !== "sideboard")
-                        .map(toCard),
-                    );
-                    const commander = d.cards.find(
-                      (c) => c.section === "commander",
-                    );
-                    if (commander) source.setCommander(toCard(commander));
-                    useHubStore.getState().setActive(d.id);
+                    const active = useHubStore.getState().activeDeckId;
+                    if (active && active !== d.id) persistSwiperDeck(active);
+                    loadSwiperDeck(d);
                     navigate("/swipe");
                   })
                 }
