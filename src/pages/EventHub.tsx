@@ -58,7 +58,6 @@ export function EventHub() {
   return (
     <HubLayout>
       <section className="space-y-5 py-5">
-        <p className="hub-eyebrow">FERRAMENTAS PARA JOGAR</p>
         <h1 className="text-4xl font-black leading-tight tracking-tight sm:text-5xl">
           Seu Magic,
           <br />
@@ -80,9 +79,6 @@ export function EventHub() {
       <section>
         <div className="mb-3 flex justify-between">
           <h2 className="text-xl font-semibold">Ferramentas</h2>
-          <span className="text-xs text-slate-500">
-            Grátis · Sem conta obrigatória
-          </span>
         </div>
         <div className="grid grid-cols-2 gap-3">
           {[
@@ -143,19 +139,6 @@ export function EventHub() {
           ))}
         </section>
       )}
-      <section
-        className={panel + " flex flex-wrap items-center justify-between gap-3"}
-      >
-        <div>
-          <h2 className="font-semibold">Uma lista, vários caminhos</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Salvar → descobrir → comprar → imprimir → compartilhar.
-          </p>
-        </div>
-        <Link to="/decks" className={ghost}>
-          Abrir biblioteca
-        </Link>
-      </section>
       <div className="flex flex-wrap gap-4 text-sm">
         <button
           className="text-indigo-300"
