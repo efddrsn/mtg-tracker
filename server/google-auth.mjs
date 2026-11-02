@@ -16,7 +16,7 @@ function flowCookie(req, value, age) {
   return `${cookieName}=${value}; HttpOnly; SameSite=Lax; Path=/api/event/auth/google; Max-Age=${age}${secureCookie(req) ? "; Secure" : ""}`;
 }
 function getFlowCookie(req) {
-  const match = (req.headers.cookie || "").match(/(?:^|;\\s*)magic_google_flow=([A-Za-z0-9_.-]+)/);
+  const match = (req.headers.cookie || "").match(/(?:^|;\s*)magic_google_flow=([A-Za-z0-9_.-]+)/);
   return match?.[1] || "";
 }
 export function clearGoogleCookie(req) { return flowCookie(req, "", 0); }
@@ -56,13 +56,13 @@ async function verifiedIdToken(jwt, nonce) {
     throw new Error("Assinatura Google inválida.");
   }
   const email = String(claims.email || "").trim().toLowerCase();
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new Error("Email Google inválido.");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Email Google inválido.");
   return {
     googleSub: String(claims.sub),
     email,
     name: String(claims.name || email.split("@")[0]).slice(0, 60),
     // Google's email claim is authoritative for Gmail and Workspace-hosted domains.
-    authoritativeEmail: /@(gmail|googlemail)\\.com$/.test(email) ||
+    authoritativeEmail: /@(gmail|googlemail)\.com$/.test(email) ||
        (typeof claims.hd === "string" && email.endsWith("@" + claims.hd.toLowerCase()))
   };
 }
