@@ -44,8 +44,8 @@ export function SwipeDeck() {
   const skip = useDeckStore((s) => s.skip);
   const setCommander = useDeckStore((s) => s.setCommander);
   const removeFromList = useDeckStore((s) => s.removeFromList);
-  const wishlistCount = useDeckStore((s) => s.wishlist.length);
-  const deckCount = useDeckStore((s) => s.deck.length);
+  const wishlistCount = useDeckStore((s) => s.wishlist.reduce((count, card) => count + (card.quantity || 1), 0));
+  const deckCount = useDeckStore((s) => s.deck.reduce((count, card) => count + (card.quantity || 1), 0));
 
   const commander = useDeckStore((s) => s.commander);
   const deckCards = useDeckStore(s=>s.deck);
@@ -53,6 +53,7 @@ export function SwipeDeck() {
   const maybeCards = useDeckStore(s=>s.maybe);
   const ownedCards = useDeckStore(s=>s.owned);
   const collections = { deck: deckCards, wishlist: wishlistCards, maybe: maybeCards, owned: ownedCards };
+  const pileCount = (pile: SwipePile) => collections[pile].reduce((count, card) => count + (card.quantity || 1), 0);
   const [source, setSource] = useState<SwipeSource>('recommendations');
   const [reviewIndex, setReviewIndex] = useState(0);
   const [corners, setCorners] = useState<Record<SwipeCorner, SwipePile>>({
@@ -490,7 +491,7 @@ export function SwipeDeck() {
             >
               {PILES.map(pile => <option key={pile.id} value={pile.id}>{pile.title}</option>)}
             </select>
-            <span>{collections[corners[corner.id]].length}</span>
+            <span>{pileCount(corners[corner.id])}</span>
           </div>
         ))}
         {top && Math.abs(drag.x) > 8 && (
