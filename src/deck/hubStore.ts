@@ -6,7 +6,7 @@ import type { ListRevision } from "./deckStore";
 export type HubCard = {
   name: string;
   quantity: number;
-  section: "main" | "commander" | "sideboard";
+  section: "main" | "commander" | "sideboard" | "maybe";
   image?: string;
   oracleId?: string;
   setCode?: string;
@@ -120,7 +120,7 @@ export function validDeck(d: unknown): d is HubDeck {
         Number.isInteger(c.quantity) &&
         c.quantity > 0 &&
         c.quantity <= 999 &&
-        ["main", "sideboard", "commander"].includes(c.section),
+        ["main", "sideboard", "commander", "maybe"].includes(c.section),
     )
   );
 }
@@ -168,8 +168,12 @@ export function parseHubList(text: string): HubCard[] {
       section = "main";
       continue;
     }
-    if (["sideboard", "side", "maybeboard"].includes(heading)) {
+    if (["sideboard", "side"].includes(heading)) {
       section = "sideboard";
+      continue;
+    }
+    if (["maybe", "maybeboard", "considering"].includes(heading)) {
+      section = "maybe";
       continue;
     }
     if (/^(\/\/|#)/.test(line)) continue;
@@ -215,6 +219,7 @@ export function listText(cards: HubCard[], versions = true): string {
     ["commander", "Commander"],
     ["main", "Deck"],
     ["sideboard", "Sideboard"],
+    ["maybe", "Maybeboard"],
   ];
   return groups
     .filter(([s]) => cards.some((c) => c.section === s))
