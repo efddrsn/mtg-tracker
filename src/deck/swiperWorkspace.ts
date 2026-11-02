@@ -1,0 +1,137 @@
+import { DEFAULT_CONFIG, type DeckFormat } from "./scryfall";
+import { useDeckStore, type DeckState, type SavedCard } from "./deckStore";
+import { fromCards, toCard, useHubStore, type HubDeck, type HubCard, type SwipeCorner, type SwipePile, type SwipeSession } from "./hubStore";
+
+export const DEFAULT_CORNERS: Record<SwipeCorner, SwipePile> = {
+  nw: "maybe",
+  ne: "deck",
+  sw: "owned",
+  se: "wishlist",
+};
+
+const FORMAT_TO_CODE: Record<string, DeckFormat> = {
+  Commander: "commander", Modern: "modern", Standard: "standard",
+  Historic: "historic", Brawl: "standardbrawl", Pioneer: "pioneer",
+  Pauper: "pauper", Legacy: "legacy",
+};
+
+export function swipeSessionFor(deck: HubDeck): SwipeSession {
+  const stored = deck.swiper;
+  const blank = {
+    ...DEFAULT_CONFIG,
+    format: FORMAT_TO_CODE[deck.format] || "commander",
+  };
+  const config = stored?.config
+    ? { ...blank, ...stored.config }
+    : blank;
+  return {
+    wishlist: stored?.wishlist || [],
+    owned: stored?.owned || [],
+    maybe: stored?.maybe || [],
+    rejected: stored?.rejected || [],
+    swipeCount: stored?.swipeCount || 0,
+    config,
+    source: stored?.source || "recommendations",
+    reviewIndex: stored?.reviewIndex || 0,
+    corners: { ...DEFAULT_CORNERS, ...stored?.corners },
+  };
+}
+
+export function hydratedDeckState(deck: HubDeck) {
+  const session = swipeSessionFor(deck);
+  const cards = deck.cards.filter(c => c.section !== "sideboard");
+  const selectedCommander = cards.find(c => c.section === "commander");
+  const commander = selectedCommander ? { ...toCard(selectedCommander), addedAt: Date.now(), quantity: selectedCommander.quantity } : null;
+  const asSaved = (items: HubCard[]): SavedCard[] => items.map(c => ({
+    ...toCard(c), addedAt: Date.now(), quantity: c.quantity,
+  }));
+  const loadedDeck = asSaved(cards);
+  const rejected = [...new Set([
+    ...session.rejected, ...loadedDeck.map(c => c.oracleId),
+    ...session.wishlist.map(c => c.oracleId || c.name),
+    ...session.maybe.map(c => c.oracleId || c.name),
+    ...session.owned.map(c => c.oracleId || c.name),
+  ])].slice(0, 4000);
+  return {
+    deck: loadedDeck,
+    wishlist: asSaved(session.wishlist),
+    maybe: asSaved(session.maybe),
+    owned: asSaved(session.owned),
+    commander,
+    rejected,
+    swipeCount: session.swipeCount,
+    revisions: session.revisions || [],
+    config: {
+      ...session.config,
+      ...(commander
+        ? { format: "commander" as DeckFormat, colors: commander.colorIdentity, colorRule: "within" as const }
+        : {}),
+    },
+  };
+}
+
+export function loadSwiperDeck(deck: HubDeck) {
+  const current = useDeckStore.getState();
+  useDeckStore.setState({
+    ...hydratedDeckState(deck),
+    configVersion: current.configVersion + 1,
+  });
+  useHubStore.getState().setActive(deck.id);
+}
+
+function sameCard(a: { name: string; oracleId?: string }, b: { name: string; oracleId?: string }) {
+  return !!(a.oracleId && b.oracleId && a.oracleId === b.oracleId)
+    || a.name.toLowerCase() === b.name.toLowerCase();
+}
+
+export function updatedSwiperDeck(deck: HubDeck, state: DeckState): HubDeck {
+  const main = state.deck.map((c) => {
+    const previous = deck.cards.find(old => old.section !== "sideboard" && sameCard(old, c));
+    const card = fromCards([c])[0];
+    return {
+      ...previous,
+      ...card,
+      quantity: c.quantity || previous?.quantity || 1,
+      section: state.commander && sameCard(c, state.commander)
+        ? "commander" as const : "main" as const,
+    };
+  });
+  // Sideboard is intentionally preserved: the swipe surface edits only the
+  // commander/mainboard and must not flatten or delete sideboard quantities.
+  const cards = [...main, ...deck.cards.filter(c => c.section === "sideboard")];
+  const base = swipeSessionFor(deck);
+  const swiper: SwipeSession = {
+    ...base,
+    config: state.config,
+    wishlist: fromCards(state.wishlist),
+    maybe: fromCards(state.maybe),
+    owned: fromCards(state.owned),
+    rejected: state.rejected.slice(0, 4000),
+    swipeCount: state.swipeCount,
+    revisions: state.revisions.slice(0, 12),
+  };
+  return {
+    ...deck,
+    cards,
+    swiper,
+    updatedAt: Math.max(Date.now(), deck.updatedAt + 1),
+  };
+}
+
+export function persistSwiperDeck(deckId: string) {
+  const hub = useHubStore.getState();
+  const deck = hub.decks.find(d => d.id === deckId && !d.deletedAt);
+  if (!deck) return;
+  hub.save(updatedSwiperDeck(deck, useDeckStore.getState()));
+}
+
+export function configureSwiperDeck(deckId: string, patch: Partial<Pick<SwipeSession, "corners" | "source" | "reviewIndex">>) {
+  const hub = useHubStore.getState();
+  const deck = hub.decks.find(d => d.id === deckId && !d.deletedAt);
+  if (!deck) return;
+  hub.save({
+    ...deck,
+    swiper: { ...swipeSessionFor(deck), ...patch },
+    updatedAt: Math.max(Date.now(), deck.updatedAt + 1),
+  });
+}
