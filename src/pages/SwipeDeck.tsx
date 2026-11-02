@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useHubStore } from '../deck/hubStore';
+import { makeDeck, useHubStore, type HubDeck, type SwipeCorner, type SwipePile, type SwipeSource } from '../deck/hubStore';
+import { configureSwiperDeck, ensureSwiperWorkspace, loadSwiperDeck, persistSwiperDeck, switchSwiperDeck, swipeSessionFor } from '../deck/swiperWorkspace';
 import { useNavigate } from 'react-router-dom';
 import { SwipeCard } from '../components/SwipeCard';
 import { ConfigSheet } from '../components/ConfigSheet';
@@ -16,7 +17,18 @@ function vibrate(ms: number) {
 }
 
 type Axis = 'h' | 'v' | null;
-type Decision = 'wishlist' | 'owned' | 'reject';
+type Decision = 'keep' | 'reject' | SwipePile;
+const PILES: { id: SwipePile; title: string }[] = [
+  { id: 'deck', title: 'Deck' }, { id: 'wishlist', title: 'Wishlist' },
+  { id: 'owned', title: 'Já tenho' }, { id: 'maybe', title: 'Talvez' },
+];
+const SOURCE_OPTIONS: { id: SwipeSource; title: string }[] = [
+  { id: 'recommendations', title: 'Recomendações' }, ...PILES,
+];
+const CORNERS: { id: SwipeCorner; title: string }[] = [
+  { id: 'nw', title: 'Superior esquerdo' }, { id: 'ne', title: 'Superior direito' },
+  { id: 'sw', title: 'Inferior esquerdo' }, { id: 'se', title: 'Inferior direito' },
+];
 
 const AXIS_LOCK = 10; // px before we commit to an axis
 const FLY_MS = 320;
@@ -24,17 +36,89 @@ const FLY_MS = 320;
 export function SwipeDeck() {
   const navigate = useNavigate();
   const activeId=useHubStore(s=>s.activeDeckId);
+  const decks=useHubStore(s=>s.decks.filter(d=>!d.deletedAt));
   const active=useHubStore(s=>s.decks.find(d=>d.id===s.activeDeckId&&!d.deletedAt));
   const feed = useRecommendationFeed();
-  const addToWishlist = useDeckStore((s) => s.addToWishlist);
-  const addToOwned = useDeckStore((s) => s.addToOwned);
+  const moveCard = useDeckStore((s) => s.moveCard);
   const reject = useDeckStore((s) => s.reject);
   const skip = useDeckStore((s) => s.skip);
   const setCommander = useDeckStore((s) => s.setCommander);
   const removeFromList = useDeckStore((s) => s.removeFromList);
-  const wishlistCount = useDeckStore((s) => s.deck.length);
-  const ownedCount = useDeckStore((s) => s.owned.length);
+  const wishlistCount = useDeckStore((s) => s.wishlist.length);
+  const deckCount = useDeckStore((s) => s.deck.length);
+
   const commander = useDeckStore((s) => s.commander);
+  const deckCards = useDeckStore(s=>s.deck);
+  const wishlistCards = useDeckStore(s=>s.wishlist);
+  const maybeCards = useDeckStore(s=>s.maybe);
+  const ownedCards = useDeckStore(s=>s.owned);
+  const collections = { deck: deckCards, wishlist: wishlistCards, maybe: maybeCards, owned: ownedCards };
+  const [source, setSource] = useState<SwipeSource>('recommendations');
+  const [reviewIndex, setReviewIndex] = useState(0);
+  const [corners, setCorners] = useState<Record<SwipeCorner, SwipePile>>({
+    nw: 'maybe', ne: 'wishlist', sw: 'deck', se: 'owned',
+  });
+  const [loadedId, setLoadedId] = useState<string | null>(null);
+  const loadedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const current = ensureSwiperWorkspace();
+    if (loadedRef.current === current.id) return;
+    if (loadedRef.current) persistSwiperDeck(loadedRef.current);
+    loadSwiperDeck(current);
+    loadedRef.current = current.id;
+    const session = swipeSessionFor(current);
+    setSource(session.source);
+    setReviewIndex(session.reviewIndex);
+    setCorners(session.corners);
+    setLoadedId(current.id);
+  }, [activeId]);
+
+  useEffect(() => {
+    if (!loadedId) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = useDeckStore.subscribe(() => {
+      clearTimeout(timer);
+      timer = setTimeout(() => persistSwiperDeck(loadedId), 500);
+    });
+    return () => {
+      unsubscribe();
+      clearTimeout(timer);
+      if (loadedRef.current === loadedId) persistSwiperDeck(loadedId);
+    };
+  }, [loadedId]);
+
+  function chooseSource(next: SwipeSource) {
+    setSource(next);
+    setReviewIndex(0);
+    if (loadedId) configureSwiperDeck(loadedId, { source: next, reviewIndex: 0 });
+    history.current = [];
+  }
+  function chooseCorner(corner: SwipeCorner, pile: SwipePile) {
+    const updated = { ...corners, [corner]: pile };
+    setCorners(updated);
+    if (loadedId) configureSwiperDeck(loadedId, { corners: updated });
+  }
+  function advanceReview(index: number) {
+    setReviewIndex(index);
+    if (loadedId) configureSwiperDeck(loadedId, { reviewIndex: index });
+  }
+  function openWorkspace(deck: HubDeck) {
+    if (deck.id === loadedRef.current) return;
+    switchSwiperDeck(deck);
+    loadedRef.current = deck.id;
+    const session = swipeSessionFor(deck);
+    setSource(session.source);
+    setReviewIndex(session.reviewIndex);
+    setCorners(session.corners);
+    setLoadedId(deck.id);
+    history.current = [];
+  }
+  function createWorkspace() {
+    if (loadedId) persistSwiperDeck(loadedId);
+    const created = makeDeck('Novo deck');
+    useHubStore.getState().save(created);
+    openWorkspace(created);
+  }
 
   const pickingCommander = feed.phase === 'commander-select';
 
@@ -63,10 +147,23 @@ export function SwipeDeck() {
   const axis = useRef<Axis>(null);
   const pointerId = useRef<number | null>(null);
   const busy = useRef(false);
-  const history = useRef<{ card: DeckCard; decision: Decision }[]>([]);
-
-  const top: DeckCard | undefined = feed.queue[0];
-  const second: DeckCard | undefined = feed.queue[1];
+  const history = useRef<{
+    card: DeckCard; source: SwipeSource; index: number;
+    state: ReturnType<typeof snapshot>;
+  }[]>([]);
+  const reviewCards = source === 'recommendations' ? [] : collections[source];
+  const top: DeckCard | undefined = source === 'recommendations' ? feed.queue[0] : reviewCards[reviewIndex];
+  const second: DeckCard | undefined = source === 'recommendations' ? feed.queue[1] : reviewCards[reviewIndex + 1];
+  function snapshot() {
+    const state = useDeckStore.getState();
+    return {
+      deck: [...state.deck], wishlist: [...state.wishlist],
+      maybe: [...state.maybe], owned: [...state.owned],
+      rejected: [...state.rejected], commander: state.commander,
+      swipeCount: state.swipeCount, config: state.config,
+      configVersion: state.configVersion,
+    };
+  }
 
   const sheetOpen = configOpen || deckOpen;
 
