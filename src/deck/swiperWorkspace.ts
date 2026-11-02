@@ -1,12 +1,12 @@
 import { DEFAULT_CONFIG, type DeckFormat } from "./scryfall";
 import { useDeckStore, type DeckState, type SavedCard } from "./deckStore";
-import { fromCards, toCard, useHubStore, type HubDeck, type HubCard, type SwipeCorner, type SwipePile, type SwipeSession } from "./hubStore";
+import { fromCards, makeDeck, toCard, useHubStore, type HubDeck, type HubCard, type SwipeCorner, type SwipePile, type SwipeSession } from "./hubStore";
 
 export const DEFAULT_CORNERS: Record<SwipeCorner, SwipePile> = {
   nw: "maybe",
-  ne: "deck",
-  sw: "owned",
-  se: "wishlist",
+  ne: "wishlist",
+  sw: "deck",
+  se: "owned",
 };
 
 const FORMAT_TO_CODE: Record<string, DeckFormat> = {
@@ -40,23 +40,26 @@ export function swipeSessionFor(deck: HubDeck): SwipeSession {
 export function hydratedDeckState(deck: HubDeck) {
   const session = swipeSessionFor(deck);
   const cards = deck.cards.filter(c => c.section !== "sideboard");
-  const selectedCommander = cards.find(c => c.section === "commander");
+  const isDeck = deck.kind === "deck";
+  const selectedCommander = isDeck ? cards.find(c => c.section === "commander") : undefined;
   const commander = selectedCommander ? { ...toCard(selectedCommander), addedAt: Date.now(), quantity: selectedCommander.quantity } : null;
   const asSaved = (items: HubCard[]): SavedCard[] => items.map(c => ({
     ...toCard(c), addedAt: Date.now(), quantity: c.quantity,
   }));
-  const loadedDeck = asSaved(cards);
+  const loadedCards = asSaved(cards);
+  const loadedDeck = isDeck ? loadedCards : [];
+  const owned = deck.kind === "collection" ? loadedCards : asSaved(session.owned);
   const rejected = [...new Set([
-    ...session.rejected, ...loadedDeck.map(c => c.oracleId),
+    ...session.rejected, ...loadedCards.map(c => c.oracleId),
     ...session.wishlist.map(c => c.oracleId || c.name),
     ...session.maybe.map(c => c.oracleId || c.name),
     ...session.owned.map(c => c.oracleId || c.name),
   ])].slice(0, 4000);
   return {
     deck: loadedDeck,
-    wishlist: asSaved(session.wishlist),
+    wishlist: deck.kind === "wishlist" ? loadedCards : asSaved(session.wishlist),
     maybe: asSaved(session.maybe),
-    owned: asSaved(session.owned),
+    owned,
     commander,
     rejected,
     swipeCount: session.swipeCount,
@@ -85,14 +88,15 @@ function sameCard(a: { name: string; oracleId?: string }, b: { name: string; ora
 }
 
 export function updatedSwiperDeck(deck: HubDeck, state: DeckState): HubDeck {
-  const main = state.deck.map((c) => {
+  const main = (deck.kind === "wishlist" ? state.wishlist
+    : deck.kind === "collection" ? state.owned : state.deck).map((c) => {
     const previous = deck.cards.find(old => old.section !== "sideboard" && sameCard(old, c));
     const card = fromCards([c])[0];
     return {
       ...previous,
       ...card,
       quantity: c.quantity || previous?.quantity || 1,
-      section: state.commander && sameCard(c, state.commander)
+      section: deck.kind === "deck" && state.commander && sameCard(c, state.commander)
         ? "commander" as const : "main" as const,
     };
   });
@@ -134,4 +138,34 @@ export function configureSwiperDeck(deckId: string, patch: Partial<Pick<SwipeSes
     swiper: { ...swipeSessionFor(deck), ...patch },
     updatedAt: Math.max(Date.now(), deck.updatedAt + 1),
   });
+}
+
+/** A new visitor receives an actual editable list rather than a hidden global workspace. */
+export function ensureSwiperWorkspace() {
+  const hub = useHubStore.getState();
+  const active = hub.decks.find(d => d.id === hub.activeDeckId && !d.deletedAt);
+  if (active) return active;
+  // Preserve the original global Wishlist / Owned on the first transition.
+  const original = useDeckStore.getState();
+  const list = makeDeck("Minhas descobertas", fromCards(original.wishlist || []), "wishlist");
+  list.swiper = {
+    ...swipeSessionFor(list),
+    wishlist: fromCards(original.wishlist || []),
+    owned: fromCards(original.owned || []),
+    maybe: fromCards(original.maybe || []),
+    rejected: [...original.rejected],
+    swipeCount: original.swipeCount,
+    revisions: original.revisions,
+    config: original.config,
+  };
+  hub.save(list);
+  hub.setActive(list.id);
+  return list;
+}
+
+/** Save before changing workspaces to avoid cross-deck state contamination. */
+export function switchSwiperDeck(next: HubDeck) {
+  const activeId = useHubStore.getState().activeDeckId;
+  if (activeId && activeId !== next.id) persistSwiperDeck(activeId);
+  loadSwiperDeck(next);
 }
