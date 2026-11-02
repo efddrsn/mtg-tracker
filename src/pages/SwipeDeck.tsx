@@ -44,8 +44,6 @@ export function SwipeDeck() {
   const skip = useDeckStore((s) => s.skip);
   const setCommander = useDeckStore((s) => s.setCommander);
   const removeFromList = useDeckStore((s) => s.removeFromList);
-  const wishlistCount = useDeckStore((s) => s.wishlist.reduce((count, card) => count + (card.quantity || 1), 0));
-  const deckCount = useDeckStore((s) => s.deck.reduce((count, card) => count + (card.quantity || 1), 0));
 
   const commander = useDeckStore((s) => s.commander);
   const deckCards = useDeckStore(s=>s.deck);
@@ -60,6 +58,17 @@ export function SwipeDeck() {
     nw: 'maybe', ne: 'wishlist', sw: 'deck', se: 'owned',
   });
   const [loadedId, setLoadedId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [workspaceMenu, setWorkspaceMenu] = useState(false);
+  const selectedDeck = decks.find(d => d.id === loadedId);
+  function renameDeck() {
+    const title = nameDraft.trim().slice(0, 100);
+    if (title && selectedDeck && title !== selectedDeck.title) {
+      useHubStore.getState().save({ ...selectedDeck, title, updatedAt: Date.now() });
+    }
+    setEditingName(false);
+  }
   const loadedRef = useRef<string | null>(null);
   useEffect(() => {
     const current = ensureSwiperWorkspace();
@@ -122,6 +131,16 @@ export function SwipeDeck() {
   }
 
   const pickingCommander = feed.phase === 'commander-select';
+
+  // A default name follows the selected commander; custom deck titles remain untouched.
+  useEffect(() => {
+    if (!commander || !loadedId) return;
+    const deck = useHubStore.getState().decks.find(d => d.id === loadedId);
+    if (!deck || !/^(Novo deck|Meu deck)(?: \d+)?$/i.test(deck.title.trim())) return;
+    useHubStore.getState().save({
+      ...deck, title: commander.name, updatedAt: Date.now(),
+    });
+  }, [commander?.oracleId, commander?.name, loadedId]);
 
   const [drag, setDrag] = useState({ x: 0, y: 0 });
   const [animate, setAnimate] = useState(false);
@@ -401,85 +420,38 @@ export function SwipeDeck() {
 
   return (
     <div className="swipe-page">
-      {/* Top bar: minimal — title cue + filters affordance */}
-      <header className="swipe-topbar">
-        <button
-          type="button"
-          className="topbar-btn"
-          onClick={() => setConfigOpen(true)}
-          aria-label="Filters"
-        >
-          ⚙
-        </button>
-        <button
-          type="button"
-          className="topbar-btn topbar-tracker"
-          onClick={() => navigate(activeId?'/decks/'+activeId:'/decks')}
-          aria-label="Voltar aos meus decks"
-        >
-          ⟵
-        </button>
-        <select
-          className="swipe-workspace-select"
-          aria-label="Deck ou lista em uso"
-          value={loadedId || ''}
-          onChange={e => {
+      <header className="swipe-topbar swipe-topbar-compact">
+        <button type="button" className="swipe-nav-icon" onClick={() => navigate('/decks')} aria-label="Meus decks">←</button>
+        {editingName ? (
+          <input className="swipe-deck-name-input" aria-label="Nome do deck"
+            value={nameDraft} maxLength={100} autoFocus
+            onChange={e => setNameDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') renameDeck(); if (e.key === 'Escape') setEditingName(false); }}
+            onBlur={renameDeck}
+          />
+        ) : (
+          <button type="button" className="swipe-deck-name" aria-label="Renomear deck"
+            onClick={() => { setNameDraft(selectedDeck?.title || 'Novo deck'); setEditingName(true); }}>
+            {selectedDeck?.title || 'Deck'} <span aria-hidden="true">✎</span>
+          </button>
+        )}
+        <button type="button" className="swipe-nav-icon" aria-label="Escolher outro deck" onClick={() => setWorkspaceMenu(!workspaceMenu)}>⌄</button>
+        <button type="button" className="swipe-nav-icon" aria-label="Filtros" onClick={() => setConfigOpen(true)}>⚙</button>
+        <button type="button" className="swipe-nav-icon" aria-label="Minhas pilhas" onClick={() => setDeckOpen(true)}>☷</button>
+      </header>
+      {workspaceMenu && (
+        <div className="swipe-workspace-menu">
+          <select aria-label="Trocar deck" value={loadedId || ''} onChange={e => {
             const selected = decks.find(d => d.id === e.target.value);
             if (selected) openWorkspace(selected);
-          }}
-        >
-          {decks.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
-        </select>
-        <button className="topbar-btn" type="button" onClick={createWorkspace} aria-label="Criar novo deck">+</button>
-        <button
-          type="button"
-          className="topbar-btn deck-pill"
-          onClick={() => setDeckOpen(true)}
-          aria-label="Deck"
-        >
-          {deckCount} deck · ♡ {wishlistCount}
-        </button>
-      </header>
-
-      {source === 'recommendations' && !pickingCommander && <div className="swipe-feed-status" role="status">{feed.loading&&!top?'Buscando sinergias…':feed.source==='model'?'Sinergias do deck':feed.source==='commander-top-picks'?'Sugestões do comandante':'Recomendações gerais'}</div>}
-      {/* Context banner: what the feed is currently doing */}
-      {source === 'recommendations' && pickingCommander ? (
-        <button
-          type="button"
-          className="feed-banner feed-banner-commander"
-          onClick={() => setSearchOpen(true)}
-        >
-          ⚜ Choose your commander
-          <span className="feed-banner-change">🔍 search</span>
-        </button>
-      ) : source === 'recommendations' && commander ? (
-        <button
-          type="button"
-          className="feed-banner feed-banner-active"
-          onClick={() => { vibrate(10); setSearchOpen(true); }}
-        >
-          <span className="feed-banner-label">⚜ {commander.name}</span>
-          <span className="feed-banner-change">change</span>
-        </button>
-      ) : null}
-
-      <div className="swipe-source-row">
-        <select
-          value={source}
-          aria-label="Pilha central"
-          onChange={e => chooseSource(e.target.value as SwipeSource)}
-        >
-          {SOURCE_OPTIONS.map(option => (
-            <option key={option.id} value={option.id}>
-              {option.title} {option.id === 'recommendations' ? '∞' : collections[option.id].length}
-            </option>
-          ))}
-        </select>
-        <span className="swipe-source-progress">
-          {source === 'recommendations' ? '∞' : `${Math.min(reviewIndex + 1, reviewCards.length)} / ${reviewCards.length}`}
-        </span>
-        <button type="button" className="swipe-edit-deck" onClick={() => navigate('/decks/' + activeId)}>Editar</button>
-      </div>
+            setWorkspaceMenu(false);
+          }}>
+            {decks.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
+          </select>
+          <button type="button" onClick={() => { createWorkspace(); setWorkspaceMenu(false); }}>+ Novo deck</button>
+          <button type="button" onClick={() => navigate('/decks/' + loadedId)}>Editar lista</button>
+        </div>
+      )}
 
       <div
         key={source}
@@ -490,6 +462,18 @@ export function SwipeDeck() {
         onPointerCancel={endGesture}
       >
         {renderStack()}
+        <div className="swipe-floating-context" onPointerDown={e=>e.stopPropagation()}>
+          <button type="button" className="swipe-commander-chip"
+            onClick={() => setSearchOpen(true)}>
+            {commander ? commander.name : pickingCommander ? 'Escolher comandante' : 'Comandante'}
+          </button>
+          <select aria-label="Pilha no centro" value={source}
+            onChange={e => chooseSource(e.target.value as SwipeSource)}>
+            {SOURCE_OPTIONS.map(option => <option key={option.id} value={option.id}>
+              {option.title} {option.id === 'recommendations' ? '∞' : pileCount(option.id)}
+            </option>)}
+          </select>
+        </div>
         {CORNERS.map(corner => (
           <div className={`swipe-corner swipe-corner-${corner.id}`} key={corner.id}
             onPointerDown={e => e.stopPropagation()}
