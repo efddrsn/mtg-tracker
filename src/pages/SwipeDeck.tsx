@@ -135,12 +135,12 @@ export function SwipeDeck() {
   // Offer the name search the first time we land in the commander phase; the
   // player can dismiss it and swipe instead.
   useEffect(() => {
-    if (pickingCommander && !autoOffered.current) {
+    if (pickingCommander && source === 'recommendations' && !autoOffered.current) {
       autoOffered.current = true;
       setSearchOpen(true);
     }
-    if (!pickingCommander) autoOffered.current = false;
-  }, [pickingCommander]);
+    if (!pickingCommander || source !== 'recommendations') autoOffered.current = false;
+  }, [pickingCommander, source]);
 
   // Transient gesture state kept in refs to avoid stale-closure bugs.
   const start = useRef({ x: 0, y: 0 });
