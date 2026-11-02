@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { makeDeck, useHubStore, type HubDeck, type SwipeCorner, type SwipePile, type SwipeSource } from '../deck/hubStore';
 import { configureSwiperDeck, ensureSwiperWorkspace, loadSwiperDeck, persistSwiperDeck, switchSwiperDeck, swipeSessionFor } from '../deck/swiperWorkspace';
 import { useNavigate } from 'react-router-dom';
@@ -149,6 +150,12 @@ export function SwipeDeck() {
   const [configDragY, setConfigDragY] = useState(0);
   const [deckDragY, setDeckDragY] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
+  function openCommanderSearch() {
+    // iOS Safari requires focusing the input in the original user gesture.
+    // A later effect/timeout opens the modal but does not raise the keyboard.
+    flushSync(() => setSearchOpen(true));
+    document.querySelector<HTMLInputElement>('.search-modal .search-input')?.focus();
+  }
   // Auto-offer the commander search once when entering the commander phase.
   const autoOffered = useRef(false);
 
@@ -464,7 +471,7 @@ export function SwipeDeck() {
         {renderStack()}
         <div className="swipe-floating-context" onPointerDown={e=>e.stopPropagation()}>
           <button type="button" className="swipe-commander-chip"
-            onClick={() => setSearchOpen(true)}>
+            onClick={openCommanderSearch}>
             {commander ? commander.name : pickingCommander ? 'Escolher comandante' : 'Comandante'}
           </button>
           <select aria-label="Pilha no centro" value={source}
