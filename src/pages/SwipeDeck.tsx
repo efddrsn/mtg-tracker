@@ -500,7 +500,10 @@ export function SwipeDeck() {
       </footer>
 
       <ConfigSheet open={configOpen} dragY={configDragY} onClose={() => setConfigOpen(false)} />
-      <DeckSheet open={deckOpen} dragY={deckDragY} onClose={() => setDeckOpen(false)} />
+      <DeckSheet open={deckOpen} dragY={deckDragY}
+        onClose={() => setDeckOpen(false)}
+        onReview={list => chooseSource(list)}
+      />
       {searchOpen && <CommanderSearch onClose={() => setSearchOpen(false)} />}
     </div>
   );
