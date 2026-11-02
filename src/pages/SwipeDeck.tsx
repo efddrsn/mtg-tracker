@@ -169,35 +169,42 @@ export function SwipeDeck() {
   const sheetOpen = configOpen || deckOpen;
 
   const commit = useCallback(
-    (decision: Decision) => {
+    (decision: Decision, chosenCorner?: SwipeCorner) => {
       if (!top || busy.current || !loadedId) return;
       busy.current = true;
       vibrate(decision === 'reject' ? 10 : 18);
       history.current.push({ card: top, source, index: reviewIndex, state: snapshot() });
       const reviewing = source !== 'recommendations';
-      if (decision === 'keep') {
-        if (reviewing) advanceReview(reviewIndex + 1);
-      } else if (decision === 'reject') {
-        if (reviewing) removeFromList(source, top.oracleId);
-        else if (pickingCommander) skip(top);
-        else reject(top);
-      } else if (pickingCommander && !reviewing) {
-        setCommander(top);
-      } else {
-        moveCard(top, source, decision);
-        if (reviewing && (decision === source || source === 'owned' || decision === 'owned')) {
-          advanceReview(reviewIndex + 1);
+      // Defer the state mutation until after the current card has left the
+      // screen. Otherwise review mode would animate the next card instead.
+      const applyDecision = () => {
+        if (decision === 'keep') {
+          if (reviewing) advanceReview(reviewIndex + 1);
+        } else if (decision === 'reject') {
+          if (reviewing) removeFromList(source, top.oracleId);
+          else if (pickingCommander) skip(top);
+          else reject(top);
+        } else if (pickingCommander && !reviewing) {
+          setCommander(top);
+        } else {
+          moveCard(top, source, decision);
+          if (reviewing && (decision === source || source === 'owned' || decision === 'owned')) {
+            advanceReview(reviewIndex + 1);
+          }
         }
-      }
+      };
       const w = window.innerWidth || 400, h = window.innerHeight || 700;
-      const corner = decision === 'keep' ? null
-        : CORNERS.find(c => corners[c.id] === decision)?.id;
+      const corner = chosenCorner || (decision === 'keep' ? null
+        : CORNERS.find(c => corners[c.id] === decision)?.id);
       setAnimate(true);
       setDrag({
-        x: decision === 'reject' ? -w * 1.3 : corner?.endsWith('e') ? w * 1.3 : -w * 1.3,
+        x: decision === 'reject' ? -w * 1.3
+          : decision === 'keep' ? w * 1.3
+          : corner?.endsWith('e') ? w * 1.3 : -w * 1.3,
         y: corner?.startsWith('n') ? -h * 0.35 : corner?.startsWith('s') ? h * 0.35 : 0,
       });
       window.setTimeout(() => {
+        applyDecision();
         if (!reviewing) feed.advance();
         setAnimate(false);
         setDrag({ x: 0, y: 0 });
@@ -233,13 +240,15 @@ export function SwipeDeck() {
       };
       if (event.key in destinations) {
         event.preventDefault();
-        commit(corners[destinations[event.key]]);
+        const corner = destinations[event.key];
+        commit(corners[corner], corner);
       } else if (event.key === 'ArrowLeft') {
         event.preventDefault();
         commit('reject');
       } else if (event.key === 'ArrowRight') {
         event.preventDefault();
-        commit(source === 'recommendations' ? corners.ne : 'keep');
+        if (source === 'recommendations') commit(corners.ne, 'ne');
+        else commit('keep');
       } else if (event.key === 'Backspace' || (event.key.toLowerCase() === 'z' && (event.metaKey || event.ctrlKey))) {
         event.preventDefault();
         undo();
@@ -293,12 +302,15 @@ export function SwipeDeck() {
       const threshold = (window.innerWidth || 400) * 0.26;
       if (Math.abs(dx) > threshold) {
         if (Math.abs(dy) < 35 && dx < 0) commit('reject');
-        else if (Math.abs(dy) < 35 && dx > 0 && source !== 'recommendations') commit('keep');
+        else if (Math.abs(dy) < 35 && dx > 0) {
+          if (source !== 'recommendations') commit('keep');
+          else commit(corners.ne, 'ne');
+        }
         else {
           const corner: SwipeCorner = dy < 0
             ? (dx < 0 ? 'nw' : 'ne')
             : (dx < 0 ? 'sw' : 'se');
-          commit(corners[corner]);
+          commit(corners[corner], corner);
         }
       } else {
         setAnimate(true);
@@ -504,7 +516,8 @@ export function SwipeDeck() {
               ? PILES.find(p => p.id === corners[drag.y < 0
                 ? (drag.x < 0 ? 'nw' : 'ne')
                 : (drag.x < 0 ? 'sw' : 'se')])?.title
-              : drag.x < 0 ? 'PASSAR' : source !== 'recommendations' ? 'MANTER' : 'WISHLIST'}
+              : drag.x < 0 ? 'PASSAR' : source !== 'recommendations' ? 'MANTER'
+                : PILES.find(p => p.id === corners.ne)?.title}
           </div>
         )}
 
