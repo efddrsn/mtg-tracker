@@ -172,6 +172,18 @@ export function ensureSwiperWorkspace() {
     }
     return active;
   }
+  // Existing users land in a real recent deck, not an empty global feed.
+  // If old global lists still contain cards, preserve them in a separate
+  // named workspace rather than attributing them to an unrelated deck.
+  const legacyContent = original.wishlist.length || original.owned.length || original.maybe.length;
+  if (!legacyContent) {
+    const recent = hub.decks.filter(d => !d.deletedAt)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (recent) {
+      hub.setActive(recent.id);
+      return recent;
+    }
+  }
   // Preserve the original global Wishlist / Owned on the first transition.
   const list = makeDeck("Minhas descobertas", fromCards(original.wishlist || []), "wishlist");
   list.swiper = {
