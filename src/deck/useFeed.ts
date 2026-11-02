@@ -15,7 +15,7 @@ import {
 
 const LOW_WATER = 6; // refill when the pool drops to this size
 const SEED_LIMIT = 12;
-const RECOMMENDER_REFRESH_MS = 500;
+const RECOMMENDER_REFRESH_MS = 1500;
 
 // Cards carry a fetch-order sequence so non-Recommander fallbacks retain
 // EDHREC order (and re-inserted "undo" cards sort to the front).
@@ -88,7 +88,6 @@ export function useRecommendationFeed() {
   const seqRef = useRef(0);
   const recommanderPrimaryRef = useRef(false);
   const fallbackStartedRef = useRef(false);
-  const topPicksStartedRef = useRef(false);
   const lastDeckSignatureRef = useRef("");
 
   const deckSignature = deck
@@ -131,7 +130,6 @@ export function useRecommendationFeed() {
     nextPageRef.current = null;
     seqRef.current = 0;
     fallbackStartedRef.current = false;
-    topPicksStartedRef.current = false;
     const snapshot = useDeckStore.getState();
     const useRecommander =
       phase === "build" &&
@@ -223,29 +221,10 @@ export function useRecommendationFeed() {
     if (fetchingRef.current || (!nextPageRef.current && !startFallback)) return;
     fetchingRef.current = true;
     const ctrl = abortRef.current ?? new AbortController();
-    const snapshot = useDeckStore.getState();
-    const useTopPicks =
-      startFallback && !topPicksStartedRef.current && !!snapshot.commander;
-    let pageRequest;
-    if (useTopPicks && snapshot.commander) {
-      topPicksStartedRef.current = true;
-      pageRequest = fetchRecommanderRecommendations(
-        {
-          commander: snapshot.commander,
-          deck: snapshot.deck,
-          config: snapshot.config,
-          source: "top-picks",
-        },
-        ctrl.signal,
-      )
-        .then((cards) => ({ cards, nextPage: null, totalCards: cards.length }))
-        .catch(() => ({ cards: [], nextPage: null, totalCards: 0 }));
-    } else {
-      pageRequest = startFallback
-        ? fetchRecommendations(buildRequest(), ctrl.signal)
-        : fetchNextPage(nextPageRef.current!, ctrl.signal);
-      if (startFallback) fallbackStartedRef.current = true;
-    }
+    const pageRequest = startFallback
+      ? fetchRecommendations(buildRequest(), ctrl.signal)
+      : fetchNextPage(nextPageRef.current!, ctrl.signal);
+    if (startFallback) fallbackStartedRef.current = true;
     setState((s) => ({ ...s, loading: true, error: null }));
 
     pageRequest

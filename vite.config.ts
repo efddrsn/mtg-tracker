@@ -10,11 +10,7 @@ export default defineConfig({
       '/binder': 'http://localhost:3000',
       '/api/stores': 'http://localhost:3000',
       '/api/prices': 'http://localhost:3000',
-      '/api/recommander': {
-        target: 'https://recommander.cards',
-        changeOrigin: true,
-        rewrite: () => '/api/decks/recommend',
-      },
+      '/api/recommander': 'http://localhost:3000',
     },
   },
 })
