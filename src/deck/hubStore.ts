@@ -300,6 +300,27 @@ export function toCard(c: HubCard): DeckCard & { quantity?: number } {
   );
 }
 
+/** All cards belong to the parent list, even when stored only in a
+ * custom or tagged pile. Membership in several piles must not duplicate a
+ * physical printing in whole-list exports or card counts. */
+export function allCardsInDeck(deck: HubDeck): HubCard[] {
+  const custom = (deck.swiper?.piles || []).filter(p => !p.deleted)
+    .flatMap(p => p.cards || []);
+  const saved = deck.swiper;
+  const items = [
+    ...deck.cards, ...(saved?.deck || []), ...(saved?.sideboard || []),
+    ...(saved?.maybe || []), ...(saved?.wishlist || []),
+    ...(saved?.owned || []), ...custom,
+  ];
+  const byPrinting = new Map<string, HubCard>();
+  for (const card of items) {
+    const key = [card.oracleId || card.name.toLowerCase(),
+      card.setCode || "", card.collectorNumber || ""].join(":");
+    if (!byPrinting.has(key)) byPrinting.set(key, card);
+  }
+  return [...byPrinting.values()];
+}
+
 export function binderText(cards: HubCard[]): string {
   return cards
     .flatMap((c) =>
