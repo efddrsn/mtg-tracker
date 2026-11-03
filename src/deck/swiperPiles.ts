@@ -7,8 +7,8 @@ export const DEFAULT_PILES: SwiperPileDefinition[] = [
   { id: "sideboard", name: "Sideboard", tag: "sideboard", angle: 90, visible: true, linkedGroup: "sections", updatedAt: 0 },
   { id: "maybe", name: "Maybe", tag: "maybe", angle: 135, visible: true, linkedGroup: "sections", updatedAt: 0 },
   { id: "wishlist", name: "Wishlist", tag: "wishlist", angle: 315, visible: true, linkedGroup: "interest", updatedAt: 0 },
-  { id: "owned", name: "Tenho", tag: "collection", angle: 270, visible: true, linkedGroup: "interest", updatedAt: 0 },
-  { id: "none", name: "Nenhum", tag: "none", angle: 225, visible: false, linkedGroup: "interest", updatedAt: 0 },
+  { id: "owned", name: "Tenho", tag: "collection", angle: 0, visible: true, linkedGroup: "interest", updatedAt: 0 },
+  { id: "none", name: "Nenhum", tag: "none", angle: 180, visible: false, linkedGroup: "interest", updatedAt: 0 },
 ];
 
 const samePrinting = (a: { oracleId?: string; name: string; setCode?: string; collectorNumber?: string },
@@ -54,6 +54,8 @@ export function resolveVisibility(piles: SwiperPileDefinition[]): SwiperPileDefi
     .sort((a, b) => b.updatedAt - a.updatedAt);
   const accepted: SwiperPileDefinition[] = [];
   for (const pile of visible) {
+    // Left/down-left is a dedicated discard lane, not an assignable pile slot.
+    if (pile.angle >= 190 && pile.angle <= 280) continue;
     if (accepted.every(p => angularDistance(p.angle, pile.angle) >= RADIAL_GAP)) accepted.push(pile);
   }
   const ids = new Set(accepted.map(p => p.id));
@@ -126,8 +128,8 @@ export function aggregateTaggedCards(decks: HubDeck[], tag: string): HubCard[] {
         ? d.cards.filter(c => ["main", "commander"].includes(c.section))
         : pile.id === "sideboard" ? d.cards.filter(c => c.section === "sideboard")
         : pile.id === "maybe" ? d.cards.filter(c => c.section === "maybe")
-        : pile.id === "wishlist" ? d.swiper?.wishlist || []
-        : pile.id === "owned" ? d.swiper?.owned || [] : []);
+        : pile.id === "wishlist" ? (d.swiper?.wishlist || (d.kind === "wishlist" ? d.cards : []))
+        : pile.id === "owned" ? (d.swiper?.owned || (d.kind === "collection" ? d.cards : [])) : []);
       for (const c of cards) {
         const key = c.oracleId || c.name.toLowerCase();
         if (!unique.has(key)) unique.set(key, c);
