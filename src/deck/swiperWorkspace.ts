@@ -87,7 +87,9 @@ export function hydratedDeckState(deck: HubDeck) {
   const asSaved = (items: HubCard[]): SavedCard[] => items.map(c => ({
     ...toCard(c), addedAt: Date.now(), quantity: c.quantity,
   }));
-  const loadedDeck = asSaved(mainCards);
+  // Legacy single-purpose lists are labels, not pre-existing Main membership.
+  const legacyLabeled = !deck.swiper && (deck.kind === "collection" || deck.kind === "wishlist");
+  const loadedDeck = legacyLabeled ? asSaved(session.deck || []) : asSaved(mainCards);
   const loadedSide = asSaved(deck.cards.filter(c => c.section === "sideboard"));
   const loadedMaybe = asSaved(deck.cards.filter(c => c.section === "maybe"));
   // A saved session is authoritative even when a pile is now empty; the
@@ -169,7 +171,9 @@ export function updatedSwiperDeck(deck: HubDeck, state: DeckState): HubDeck {
   // Sections are independent. Moving a card into Side or Maybe updates the
   // canonical deck list as well as its per-workspace Swiper session.
   const cards = [
-    ...main,
+    ...(main.length ? main :
+      deck.kind === "wishlist" ? asHubCards(state.wishlist, "main") :
+      deck.kind === "collection" ? asHubCards(state.owned, "main") : []),
     ...asHubCards(state.sideboard, "sideboard"),
     ...asHubCards(state.maybe, "maybe"),
   ];
