@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { makeDeck, useHubStore, toCard, type HubDeck, type HubCard, type ListLabel, type SwiperPileDefinition, type SwipePile, type SwipeSource } from '../deck/hubStore';
+import { makeDeck, useHubStore, toCard, type HubDeck, type ListLabel, type SwiperPileDefinition, type SwipeSource } from '../deck/hubStore';
 import { configureSwiperDeck, loadSwiperDeck, persistSwiperDeck, swipeSessionFor } from '../deck/swiperWorkspace';
 import { addPile, aggregateTaggedCards, assignCustomPile, changePile, findRadialTarget, fromRecommendationCard, isRightSide, normalizePiles, removeCustomCard } from '../deck/swiperPiles';
 import { SwiperRadialPiles } from '../components/SwiperRadialPiles';
@@ -36,11 +36,6 @@ export function SwipeDeck() {
   const allDecks=useHubStore(s=>s.decks);
   const decks=allDecks.filter(d=>!d.deletedAt);
   const feed = useRecommendationFeed();
-  const moveCard = useDeckStore((s) => s.moveCard);
-  const reject = useDeckStore((s) => s.reject);
-  const skip = useDeckStore((s) => s.skip);
-  const setCommander = useDeckStore((s) => s.setCommander);
-  const removeFromList = useDeckStore((s) => s.removeFromList);
 
   const commander = useDeckStore((s) => s.commander);
   const deckCards = useDeckStore(s=>s.deck);
@@ -57,7 +52,7 @@ export function SwipeDeck() {
     if (id.startsWith('aggregate:')) return aggregateTaggedCards(decks, id.slice(10)).map(toCard);
     return piles.find(p=>p.id===id)?.cards?.map(toCard) || [];
   }
-  const pileCount = (id: string) => pileCards(id).reduce((count, card) => count + (card.quantity || 1), 0);
+  const pileCount = (id: string) => (pileCards(id) as (DeckCard & {quantity?:number})[]).reduce((count, card) => count + (card.quantity || 1), 0);
   function savePiles(updated: SwiperPileDefinition[]) {
     setPiles(updated);
     if (loadedRef.current) configureSwiperDeck(loadedRef.current,{piles:updated});
