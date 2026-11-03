@@ -14,6 +14,7 @@ describe("radial piles", () => {
     const piles = normalizePiles();
     expect(piles.map(p => p.name)).toEqual(["Main","Sideboard","Maybe","Wishlist","Tenho","Nenhum"]);
     expect(piles.find(p => p.id === "none")?.visible).toBe(false);
+    expect(piles.find(p => p.id === "owned")?.angle).toBe(0);
   });
   it("selects right side positive destinations and fixed left discard", () => {
     const piles = normalizePiles();
@@ -31,6 +32,8 @@ describe("radial piles", () => {
     expect(piles.find(p=>p.id==="deck")?.visible).toBe(false);
     expect(angularDistance(45,360)).toBe(45);
     expect(piles.find(p=>p.id==="deck")?.tag).toBe("main");
+    const reserved = changePile(piles,"wishlist",{angle:225,visible:true});
+    expect(reserved.find(p=>p.id==="wishlist")?.visible).toBe(false);
   });
   it("keeps the most recent explicit tag and a deleted default deleted", () => {
     let piles = changePile(DEFAULT_PILES,"deck",{name:"My Main",tag:"keepers"});
