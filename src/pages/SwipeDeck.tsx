@@ -188,6 +188,7 @@ export function SwipeDeck() {
     const reviewing = source !== 'recommendations';
     const apply = () => {
       const store = useDeckStore.getState();
+      let changed = piles;
       if (destination === 'keep') {
         if (reviewing) advanceReview(reviewIndex + 1);
       } else if (destination === 'reject') {
@@ -198,7 +199,8 @@ export function SwipeDeck() {
           } else if (source.startsWith('aggregate:')) {
             store.skip(top);
           } else {
-            savePiles(removeCustomCard(piles, source, fromRecommendationCard(top)));
+            changed = removeCustomCard(piles, source, fromRecommendationCard(top));
+            savePiles(changed);
           }
         } else if (pickingCommander) store.skip(top);
         else store.reject(top);
@@ -212,9 +214,10 @@ export function SwipeDeck() {
           ?.some(c => cardIdentity(c, top));
         const hasInterest = [...store.wishlist, ...store.owned]
           .some(c => cardIdentity(c, top)) || explicitNone;
-        let changed = piles;
         if (isSection) {
           store.assignSection(top, target.id as 'deck' | 'sideboard' | 'maybe');
+          changed = changed.map(p => p.cards && p.linkedGroup === 'sections'
+            ? { ...p, cards: p.cards.filter(c => !cardIdentity(c, top)) } : p);
           if (!hasInterest) store.setInterest(top, 'wishlist');
         } else if (isStatus) {
           store.setInterest(top, target.id as 'wishlist' | 'owned' | 'none');
@@ -223,6 +226,8 @@ export function SwipeDeck() {
           changed = changed.map(p => p.id === 'none' && p.cards
             ? { ...p, cards: p.cards.filter(c => !cardIdentity(c, top)) } : p);
           if (target.id === 'none' && nonePile) changed = assignCustomPile(changed, 'none', fromRecommendationCard(top));
+          changed = changed.map(p=>p.cards && p.linkedGroup === 'interest' && p.id !== target.id
+            ? { ...p, cards:p.cards.filter(c=>!cardIdentity(c,top)) } : p);
         } else {
           // Membership can coexist across independent groups.
           // Linked groups remove a previous classification in that group.
@@ -232,12 +237,25 @@ export function SwipeDeck() {
                 store.removeFromList(section, top.oracleId, top);
             }
           }
-          if (target.linkedGroup === 'interest') store.setInterest(top, 'none');
+          if (target.linkedGroup === 'interest') {
+            store.setInterest(top, 'none');
+            if (!inSection) store.assignSection(top, 'deck');
+          } else if (target.linkedGroup === 'sections' && !hasInterest) {
+            store.setInterest(top, 'wishlist');
+          }
           changed = assignCustomPile(changed, target.id, fromRecommendationCard(top));
         }
         if (changed !== piles) savePiles(changed);
         if (isRightSide(target.angle)) store.reinforceCard(top);
-        if (reviewing) advanceReview(reviewIndex + 1);
+      }
+      if (reviewing && destination !== 'keep') {
+        const updated = useDeckStore.getState();
+        const remains = source.startsWith('aggregate:') ? true :
+          source === 'deck' || source === 'sideboard' || source === 'maybe' ||
+          source === 'wishlist' || source === 'owned'
+            ? updated[source].some(c => cardIdentity(c, top))
+            : (changed.find(p=>p.id===source)?.cards || []).some(c=>cardIdentity(c,top));
+        advanceReview(reviewIndex + (remains ? 1 : 0));
       }
     };
     const w = window.innerWidth || 390, h = window.innerHeight || 700;
@@ -248,8 +266,11 @@ export function SwipeDeck() {
       y: destination === 'reject' ? h * .2 : destination === 'keep' ? 0 : -Math.cos(rad) * h * .56,
     });
     window.setTimeout(() => {
-      apply();
-      if (!reviewing) feed.advance();
+      // Do not apply a delayed swipe to another deck after a fast switch.
+      if (loadedRef.current === loadedId) {
+        apply();
+        if (!reviewing) feed.advance();
+      }
       setAnimate(false);
       setDrag({ x:0, y:0 });
       busy.current = false;
