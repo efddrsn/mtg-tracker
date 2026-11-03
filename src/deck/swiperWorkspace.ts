@@ -92,13 +92,13 @@ export function hydratedDeckState(deck: HubDeck) {
   const loadedMaybe = asSaved(deck.cards.filter(c => c.section === "maybe"));
   // A saved session is authoritative even when a pile is now empty; the
   // canonical deck.cards still supports imported lists without session data.
-  const sideboard = deck.swiper ? asSaved(session.sideboard || deck.cards.filter(c => c.section === "sideboard")) : loadedSide;
-  const maybe = deck.swiper ? asSaved(session.maybe) : loadedMaybe;
-  const wishlist = asSaved(session.wishlist.length
-    ? session.wishlist
+  const sideboard = loadedSide.length ? loadedSide : asSaved(session.sideboard || []);
+  const maybe = loadedMaybe.length ? loadedMaybe : asSaved(session.maybe);
+  // Legacy list kinds are only a one-time migration source. Empty saved
+  // labels must stay empty rather than silently repopulating on reopen.
+  const wishlist = asSaved(deck.swiper ? session.wishlist
     : deck.kind === "wishlist" ? deck.cards : []);
-  const owned = asSaved(session.owned.length
-    ? session.owned
+  const owned = asSaved(deck.swiper ? session.owned
     : deck.kind === "collection" ? deck.cards : []);
   const positive = asSaved(session.positive || []);
   const rejected = [...new Set([
