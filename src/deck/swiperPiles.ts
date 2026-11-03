@@ -66,10 +66,16 @@ export function changePile(piles: SwiperPileDefinition[], id: string,
   changes: Partial<SwiperPileDefinition>): SwiperPileDefinition[] {
   const target = piles.find(p => p.id === id);
   if (!target) return piles;
-  const group = changes.visible === true ? target.linkedGroup : undefined;
+  const group = changes.visible === true
+    ? (changes.linkedGroup ?? target.linkedGroup) : changes.linkedGroup || undefined;
   const now = Date.now();
   const changed = piles.map(p => {
-    if (p.id === id) return { ...p, ...changes, id, angle: pileAngle(changes.angle ?? p.angle), updatedAt: now };
+    if (p.id === id) return {
+      ...p, ...changes, id,
+      angle: pileAngle(changes.angle ?? p.angle),
+      cards: changes.deleted ? (p.cards ? [] : undefined) : p.cards,
+      updatedAt: now,
+    };
     if (group && p.linkedGroup === group) return { ...p, visible: true };
     return p;
   });
