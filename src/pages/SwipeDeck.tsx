@@ -186,52 +186,84 @@ export function SwipeDeck() {
 
   const sheetOpen = configOpen || deckOpen;
 
-  const commit = useCallback(
-    (decision: Decision, chosenCorner?: SwipeCorner) => {
-      if (!top || busy.current || !loadedId) return;
-      busy.current = true;
-      vibrate(decision === 'reject' ? 10 : 18);
-      history.current.push({ card: top, source, index: reviewIndex, state: snapshot() });
-      const reviewing = source !== 'recommendations';
-      // Defer the state mutation until after the current card has left the
-      // screen. Otherwise review mode would animate the next card instead.
-      const applyDecision = () => {
-        if (decision === 'keep') {
-          if (reviewing) advanceReview(reviewIndex + 1);
-        } else if (decision === 'reject') {
-          if (reviewing) removeFromList(source, top.oracleId, top);
-          else if (pickingCommander) skip(top);
-          else reject(top);
-        } else if (pickingCommander && !reviewing) {
-          setCommander(top);
-        } else {
-          moveCard(top, source, decision);
-          if (reviewing && (decision === source || source === 'owned' || decision === 'owned')) {
-            advanceReview(reviewIndex + 1);
+
+  const commit = useCallback((destination: string) => {
+    if (!top || busy.current || !loadedId || choosingWorkspace) return;
+    const target = piles.find(p => p.id === destination);
+    if (destination !== 'reject' && destination !== 'keep' && (!target || target.deleted)) return;
+    busy.current = true;
+    vibrate(destination === 'reject' ? 10 : 18);
+    history.current.push({ card: top, source, index: reviewIndex, state: snapshot(), piles });
+    const reviewing = source !== 'recommendations';
+    const apply = () => {
+      const store = useDeckStore.getState();
+      if (destination === 'keep') {
+        if (reviewing) advanceReview(reviewIndex + 1);
+      } else if (destination === 'reject') {
+        if (reviewing) {
+          if (source === 'deck' || source === 'sideboard' || source === 'maybe' ||
+              source === 'wishlist' || source === 'owned') {
+            store.removeFromList(source, top.oracleId, top);
+          } else if (source.startsWith('aggregate:')) {
+            store.skip(top);
+          } else {
+            savePiles(removeCustomCard(piles, source, fromRecommendationCard(top)));
           }
+        } else if (pickingCommander) store.skip(top);
+        else store.reject(top);
+      } else if (target) {
+        if (pickingCommander && !reviewing) store.setCommander(top);
+        const isSection = CORE_SECTIONS.some(id => id === target.id);
+        const isStatus = CORE_STATUS.some(id => id === target.id);
+        const inSection = [...store.deck, ...store.sideboard, ...store.maybe]
+          .some(c => cardIdentity(c, top));
+        const explicitNone = piles.find(p => p.id === 'none')?.cards
+          ?.some(c => cardIdentity(c, top));
+        const hasInterest = [...store.wishlist, ...store.owned]
+          .some(c => cardIdentity(c, top)) || explicitNone;
+        let changed = piles;
+        if (isSection) {
+          store.assignSection(top, target.id as 'deck' | 'sideboard' | 'maybe');
+          if (!hasInterest) store.setInterest(top, 'wishlist');
+        } else if (isStatus) {
+          store.setInterest(top, target.id as 'wishlist' | 'owned' | 'none');
+          if (!inSection) store.assignSection(top, 'deck');
+          const nonePile = changed.find(p => p.id === 'none');
+          changed = changed.map(p => p.id === 'none' && p.cards
+            ? { ...p, cards: p.cards.filter(c => !cardIdentity(c, top)) } : p);
+          if (target.id === 'none' && nonePile) changed = assignCustomPile(changed, 'none', fromRecommendationCard(top));
+        } else {
+          // Membership can coexist across independent groups.
+          // Linked groups remove a previous classification in that group.
+          if (target.linkedGroup === 'sections') {
+            for (const section of CORE_SECTIONS) {
+              if (pileCards(section).some(c => cardIdentity(c, top)))
+                store.removeFromList(section, top.oracleId, top);
+            }
+          }
+          if (target.linkedGroup === 'interest') store.setInterest(top, 'none');
+          changed = assignCustomPile(changed, target.id, fromRecommendationCard(top));
         }
-      };
-      const w = window.innerWidth || 400, h = window.innerHeight || 700;
-      const corner = chosenCorner || (decision === 'keep' ? null
-        : CORNERS.find(c => corners[c.id] === decision)?.id);
-      setAnimate(true);
-      setDrag({
-        x: decision === 'reject' ? -w * 1.3
-          : decision === 'keep' ? w * 1.3
-          : corner?.endsWith('e') ? w * 1.3 : -w * 1.3,
-        y: corner?.startsWith('n') ? -h * 0.35 : corner?.startsWith('s') ? h * 0.35 : 0,
-      });
-      window.setTimeout(() => {
-        applyDecision();
-        if (!reviewing) feed.advance();
-        setAnimate(false);
-        setDrag({ x: 0, y: 0 });
-        busy.current = false;
-      }, FLY_MS);
-    },
-    [top, source, loadedId, reviewIndex, corners, pickingCommander,
-      reject, skip, setCommander, moveCard, removeFromList, feed],
-  );
+        if (changed !== piles) savePiles(changed);
+        if (isRightSide(target.angle)) store.reinforceCard(top);
+        if (reviewing) advanceReview(reviewIndex + 1);
+      }
+    };
+    const w = window.innerWidth || 390, h = window.innerHeight || 700;
+    const rad = (target?.angle || 270) * Math.PI / 180;
+    setAnimate(true);
+    setDrag({
+      x: destination === 'reject' ? -w * 1.35 : destination === 'keep' ? w * 1.25 : Math.sin(rad) * w * 1.4,
+      y: destination === 'reject' ? h * .2 : destination === 'keep' ? 0 : -Math.cos(rad) * h * .56,
+    });
+    window.setTimeout(() => {
+      apply();
+      if (!reviewing) feed.advance();
+      setAnimate(false);
+      setDrag({ x:0, y:0 });
+      busy.current = false;
+    }, FLY_MS);
+  }, [top, loadedId, choosingWorkspace, piles, source, reviewIndex, pickingCommander, feed]);
 
   const undo = useCallback(() => {
     if (busy.current) return;
@@ -239,13 +271,13 @@ export function SwipeDeck() {
     if (!last) return;
     vibrate(8);
     useDeckStore.setState(last.state);
+    savePiles(last.piles);
     if (last.source === 'recommendations') feed.pushFront(last.card);
     setSource(last.source);
     advanceReview(last.index);
     setAnimate(false);
-    setDrag({ x: 0, y: 0 });
+    setDrag({ x:0, y:0 });
   }, [feed, loadedId]);
-
   // Keyboard alternatives to the removed bottom buttons. Controls that edit
   // text or choose a pile retain their native keyboard handling.
   useEffect(() => {
