@@ -2026,3 +2026,17 @@ body { margin: 0; padding: 0; }
 @media(prefers-reduced-motion:reduce){
  .swipe-radial-pile,.swipe-discard-destination{transition:none}
 }
+
+/* Interactive clock ring appears only in pile organization mode. */
+.swipe-radial-clock{
+ position:absolute;inset:8% 5%;width:90%;height:84%;overflow:visible;
+ pointer-events:none;opacity:.72;
+ filter:drop-shadow(0 0 9px rgba(162,145,250,.43));
+ animation:swipe-clock-show .22s ease-out both;
+}
+.swipe-radial-draggable{touch-action:none;cursor:grab;border-color:rgba(226,205,255,.55);
+ background:rgba(54,41,99,.52)}
+.swipe-radial-draggable:active{cursor:grabbing;z-index:170;background:rgba(118,92,208,.76);
+ box-shadow:0 0 12px 3px rgba(171,146,255,.76)}
+@keyframes swipe-clock-show{from{opacity:0;transform:scale(.95)}to{opacity:.72;transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.swipe-radial-clock{animation:none}}
