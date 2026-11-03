@@ -72,7 +72,7 @@ export function MyDecks() {
       if (active && active !== d.id) persistSwiperDeck(active);
       loadSwiperDeck(selected);
       setOpeningId(null);
-      navigate('/swipe');
+      navigate('/swipe', { state: { selectedDeckId: d.id } });
     }
   }
   const wishlistCount = useDeckStore((s) => s.wishlist.length);
@@ -722,7 +722,7 @@ export function DeckEditor() {
                     const active = useHubStore.getState().activeDeckId;
                     if (active && active !== d.id) persistSwiperDeck(active);
                     loadSwiperDeck(d);
-                    navigate("/swipe");
+                    navigate("/swipe", { state: { selectedDeckId: d.id } });
                   })
                 }
               >
