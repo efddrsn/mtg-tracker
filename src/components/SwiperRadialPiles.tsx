@@ -25,6 +25,22 @@ export function SwiperRadialPiles({
   const [group, setGroup] = useState("");
   const [angle, setAngle] = useState(165);
   const [eraseConfirm, setEraseConfirm] = useState(false);
+  const [draggingPile, setDraggingPile] = useState<string | null>(null);
+  const [previewAngles, setPreviewAngles] = useState<Record<string,number>>({});
+  const angleFromPointer = (element: HTMLElement, clientX: number, clientY: number) => {
+    const bounds = element.getBoundingClientRect();
+    const x = (clientX - (bounds.left + bounds.width/2)) / (bounds.width*.42);
+    const y = ((bounds.top + bounds.height/2) - clientY) / (bounds.height*.36);
+    return ((Math.round(Math.atan2(x, y) * 180/Math.PI/5)*5 % 360)+360)%360;
+  };
+  const finishPileDrag = (id: string) => {
+    const next = previewAngles[id];
+    if (next !== undefined) onUpdate(id,{angle:next,visible:true});
+    setDraggingPile(null);
+    setPreviewAngles(previous => {
+      const updated = {...previous}; delete updated[id]; return updated;
+    });
+  };
   const available = piles.filter(p => !p.deleted);
   const selected = available.find(p => p.id === focused) || available[0];
   const shown = available.filter(p => p.visible);
@@ -34,21 +50,45 @@ export function SwiperRadialPiles({
   return (
     <>
       <div className="swipe-radial-layer" aria-label="Pilhas ao redor da carta">
+        {editing && <svg className="swipe-radial-clock" aria-hidden="true" viewBox="0 0 100 100"
+          preserveAspectRatio="none">
+          <ellipse cx="50" cy="50" rx="48" ry="46" fill="none"
+            stroke="rgba(193,181,255,.45)" strokeWidth=".35" strokeDasharray="1 1.5"/>
+          {Array.from({length:12},(_,i)=>{
+            const a=i*Math.PI/6;
+            return <line key={i} x1={50+44*Math.sin(a)} y1={50-42*Math.cos(a)}
+              x2={50+48*Math.sin(a)} y2={50-46*Math.cos(a)}
+              stroke="rgba(220,207,255,.7)" strokeWidth=".55"/>;
+          })}
+        </svg>}
         <div className={`swipe-discard-destination ${dragging && activeTarget === "reject" ? "swipe-target-active" : ""}`}
           title="Descarte: esquerda ou diagonal inferior esquerda" aria-label="Descarte fixo">
           <span>Descartar</span><strong>×</strong>
         </div>
         {shown.map(p => {
-          const rad = p.angle * Math.PI / 180;
+          const angle = previewAngles[p.id] ?? p.angle;
+          const rad = angle * Math.PI / 180;
           const x = 50 + Math.sin(rad) * 42;
           const y = 50 - Math.cos(rad) * 36;
-          const positive = isRightSide(p.angle);
+          const positive = isRightSide(angle);
           return <button type="button" key={p.id}
-            className={`swipe-radial-pile ${dragging && activeTarget === p.id ? "swipe-target-active" : ""} ${activeSource === p.id ? "swipe-target-center" : ""}`}
+            className={`swipe-radial-pile ${dragging && activeTarget === p.id ? "swipe-target-active" : ""} ${activeSource === p.id ? "swipe-target-center" : ""} ${editing ? "swipe-radial-draggable" : ""}`}
             style={{ left: x + "%", top: y + "%" }}
-            onPointerDown={e=>e.stopPropagation()}
-            onPointerUp={e=>e.stopPropagation()}
-            onClick={() => onCenter(p.id)}
+            onPointerDown={e=>{
+              e.stopPropagation();
+              if (editing) {setDraggingPile(p.id);e.currentTarget.setPointerCapture(e.pointerId);}
+            }}
+            onPointerMove={e=>{
+              e.stopPropagation();
+              if (editing && draggingPile===p.id && e.buttons!==0) {
+                const parent=e.currentTarget.parentElement;
+                if(parent) setPreviewAngles(prev=>({...prev,
+                  [p.id]:angleFromPointer(parent,e.clientX,e.clientY)}));
+              }
+            }}
+            onPointerUp={e=>{e.stopPropagation();if(editing && draggingPile===p.id)finishPileDrag(p.id);}}
+            onPointerCancel={e=>{e.stopPropagation();setDraggingPile(null);setPreviewAngles({});}}
+            onClick={() => editing ? setFocused(p.id) : onCenter(p.id)}
             aria-label={`Centralizar ${p.name}. ${count(p.id)} cartas. ${positive ? "Reforça recomendações." : ""}`}>
             <span className="swipe-radial-name">{p.name}</span>
             <span className="swipe-radial-count">{count(p.id)}{positive && <span className="swipe-radial-positive" title="Este destino reforça as recomendações"> ✧</span>}</span>
@@ -66,7 +106,7 @@ export function SwiperRadialPiles({
           <button type="button" onClick={()=>setCreating(!creating)}>+ Nova</button>
           <button type="button" aria-label="Fechar organização" onClick={()=>setEditing(false)}>×</button>
         </header>
-        <p className="swipe-radial-intro">Distribua as pilhas pelo relógio. O lado direito <b>✧ reforça recomendações</b>. Pilhas vinculadas não podem conter a mesma carta.</p>
+        <p className="swipe-radial-intro">Arraste as pilhas sobre o relógio ou ajuste o ângulo. O lado direito <b>✧ reforça recomendações</b>. Pilhas vinculadas não podem conter a mesma carta.</p>
         {creating ? <form className="swipe-radial-new" onSubmit={e=>{
           e.preventDefault();onAdd(name || "Nova pilha",tag,angle,group);setCreating(false);setName("");setTag("");setGroup("");
         }}>
