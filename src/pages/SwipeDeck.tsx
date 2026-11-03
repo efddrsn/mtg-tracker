@@ -57,6 +57,18 @@ export function SwipeDeck() {
     setPiles(updated);
     if (loadedRef.current) configureSwiperDeck(loadedRef.current,{piles:updated});
   }
+  function updatePileDefinition(id: string, changes: Partial<SwiperPileDefinition>) {
+    const updated = changePile(piles,id,changes);
+    savePiles(updated);
+    if (changes.deleted && source === id) chooseSource('recommendations');
+    // A pile moved into the RHS reinforces the existing cards as well, not
+    // just cards swiped into it after the layout change.
+    if (changes.angle !== undefined || changes.visible === true) {
+      const positive = updated.find(p => p.id === id && p.visible && isRightSide(p.angle));
+      if (positive) for (const card of pileCards(id))
+        useDeckStore.getState().reinforceCard(card);
+    }
+  }
   const [source, setSource] = useState<string>('recommendations');
   const [reviewIndex, setReviewIndex] = useState(0);
   const [loadedId, setLoadedId] = useState<string | null>(null);
@@ -509,7 +521,7 @@ export function SwipeDeck() {
           activeTarget={draggingCard ? findRadialTarget(piles,drag.x,drag.y) : null}
           dragging={draggingCard} count={pileCount} onCenter={chooseSource}
           onAggregate={tag=>chooseSource('aggregate:'+tag)}
-          onUpdate={(id,changes)=>savePiles(changePile(piles,id,changes))}
+          onUpdate={updatePileDefinition}
           onAdd={(name,tag,angle,group)=>savePiles(addPile(piles,{
             name,tag,angle,linkedGroup:group,
           }))}/>
