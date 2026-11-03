@@ -21,6 +21,7 @@ import {
   toCard,
   labelOf,
   LABEL_NAMES,
+  allCardsInDeck,
   type ListLabel,
 } from "../deck/hubStore";
 import type { HubDeck, HubCard } from "../deck/hubStore";
@@ -71,7 +72,7 @@ export function MyDecks() {
       if (active && active !== d.id) persistSwiperDeck(active);
       loadSwiperDeck(selected);
       setOpeningId(null);
-      navigate('/swipe');
+      navigate('/swipe', { state: { selectedDeckId: d.id } });
     }
   }
   const wishlistCount = useDeckStore((s) => s.wishlist.length);
@@ -80,7 +81,7 @@ export function MyDecks() {
     .filter(
       (d) =>
         !!d.deletedAt === trash &&
-        `${d.title} ${d.format} ${d.kind}`
+        `${d.title} ${d.format} ${d.kind} ${d.swiper?.piles?.map(p => p.name+' '+p.tag).join(' ') || ''}`
           .toLowerCase()
           .includes(query.toLowerCase()),
     )
@@ -233,7 +234,7 @@ export function MyDecks() {
                 </select>
               </label>}
               <p className="my-2 text-xs text-slate-400">
-                {d.format} · {d.cards.reduce((n, c) => n + c.quantity, 0)}{" "}
+                {d.format} · {allCardsInDeck(d).reduce((n, c) => n + c.quantity, 0)}{" "}
                 cartas
                 <br />
                 {d.shareId
@@ -721,7 +722,7 @@ export function DeckEditor() {
                     const active = useHubStore.getState().activeDeckId;
                     if (active && active !== d.id) persistSwiperDeck(active);
                     loadSwiperDeck(d);
-                    navigate("/swipe");
+                    navigate("/swipe", { state: { selectedDeckId: d.id } });
                   })
                 }
               >

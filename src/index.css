@@ -1934,3 +1934,114 @@ body { margin: 0; padding: 0; }
 @media(prefers-reduced-motion:reduce){
   .swipe-table .swipe-corner{transition:none}
 }
+
+/* Radial pile clock: spatial navigation without opaque pile boxes. */
+.swipe-radial-layer{position:absolute;inset:0;z-index:130;pointer-events:none}
+.swipe-radial-pile,.swipe-discard-destination{
+ position:absolute;transform:translate(-50%,-50%);
+ min-width:56px;max-width:108px;display:flex;flex-direction:column;
+ justify-content:center;align-items:center;gap:1px;cursor:pointer;
+ color:#fff;text-align:center;background:rgba(9,12,35,.17);
+ border:1px solid rgba(210,205,255,.12);border-radius:13px;
+ backdrop-filter:blur(4px);padding:6px 7px;
+ text-shadow:0 2px 8px #070615,0 1px 2px #070615;
+ transition:transform .17s ease,background .17s ease,box-shadow .17s ease;
+ pointer-events:auto;
+}
+.swipe-radial-name{font:800 clamp(10px,2.5vw,13px)/1.15 system-ui,sans-serif;
+ overflow:hidden;text-overflow:ellipsis;max-width:90px;white-space:nowrap}
+.swipe-radial-count{font-size:11px;color:#efedff;font-variant-numeric:tabular-nums}
+.swipe-radial-positive{color:#b9ffd2;font-weight:900}
+.swipe-radial-pile.swipe-target-active{
+ background:rgba(116,101,240,.46);
+ box-shadow:0 0 0 2px #d8c6ff,0 0 25px 7px #a08bffb8;
+ transform:translate(-50%,-50%) scale(1.16);
+}
+.swipe-radial-pile.swipe-target-center{border-color:rgba(224,220,255,.7)}
+.swipe-discard-destination{left:6%;top:80%;cursor:default;pointer-events:none}
+.swipe-discard-destination strong{font-size:15px}
+.swipe-discard-destination.swipe-target-active{
+ background:rgba(215,73,112,.45);
+ box-shadow:0 0 0 2px #ffb1bc,0 0 27px 8px #f65e87aa;
+ transform:translate(-50%,-50%) scale(1.14);
+}
+.swipe-pile-arrange{z-index:150;bottom:5px}
+.swipe-radial-editor{
+ position:absolute;z-index:210;bottom:44px;left:8px;right:8px;
+ width:min(480px,calc(100% - 16px));max-height:min(69dvh,530px);
+ margin:auto;overflow-y:auto;overscroll-behavior:contain;
+ background:rgba(19,20,42,.98);border:1px solid rgba(175,168,240,.36);
+ border-radius:18px;box-shadow:0 10px 44px #0009;
+ color:#f4f0ff;padding:13px;display:flex;flex-direction:column;gap:9px;
+}
+.swipe-radial-editor header{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.swipe-radial-editor header strong{flex:1}
+.swipe-radial-editor button{cursor:pointer;border-radius:10px;padding:7px 10px;
+ color:#f4f0ff;border:1px solid #827cac66;background:#6866b926}
+.swipe-radial-editor .swipe-radial-intro{color:#bcb5d2;font-size:11px;line-height:1.45;margin:0}
+.swipe-radial-editor .swipe-radial-intro b{color:#b6f8cf}
+.swipe-radial-editor-tabs{display:flex;flex-wrap:wrap;gap:5px}
+.swipe-radial-editor-tabs button{font-size:11px;padding:6px 9px}
+.swipe-radial-editor-tabs button.active{background:#8170cc77;border-color:#bbb0ff}
+.swipe-radial-editor label,.swipe-radial-new label{font-size:11px;display:grid;gap:4px}
+.swipe-radial-editor input:not([type=range]),.swipe-radial-new input:not([type=range]){
+ width:100%;min-width:0;font:14px system-ui,sans-serif;
+ border:1px solid rgba(195,187,245,.37);border-radius:9px;
+ color:#fff;background:#252547;padding:9px
+}
+.swipe-radial-editor input[type=range]{width:100%;accent-color:#b6aaff}
+.swipe-radial-editor-actions{display:flex;flex-wrap:wrap;gap:6px}
+.swipe-radial-editor-actions .swipe-radial-danger{color:#ffbcc6}
+.swipe-radial-signal{color:#b5f2d0;font:11px/1.4 system-ui,sans-serif;margin:0}
+.swipe-radial-new{display:grid;gap:9px}
+.swipe-radial-new button[type=submit]{background:#9993e9;color:#15142e;font-weight:800}
+.swipe-picker{flex:1;min-height:0;overflow-y:auto;color:#eeeaf9;
+ background:radial-gradient(circle at 50% 8%,#302b52,#0d1023 65%)}
+.swipe-picker-inner{width:min(600px,100%);margin:auto;padding:20px 18px 50px;display:grid;gap:18px}
+.swipe-picker-head{display:flex;gap:16px;align-items:center}
+.swipe-picker-head>div{flex:1}
+.swipe-picker-head h1{font-size:24px;font-weight:850;margin:0}
+.swipe-picker-head p{font:750 11px system-ui;letter-spacing:.22em;color:#b7b1eb;margin:0 0 4px}
+.swipe-picker-head button{border:0;background:#ffffff1a;border-radius:12px;color:white;font-size:22px;padding:5px 12px}
+.swipe-picker-existing,.swipe-picker-create{background:#17192ca1;border:1px solid #aaa2db30;border-radius:16px;padding:14px}
+.swipe-picker h2{font:750 15px system-ui;margin:0 0 13px}
+.swipe-picker h2 span{font-size:12px;color:#b7aed1}
+.swipe-picker input,.swipe-picker select{width:100%;min-width:0;border-radius:10px;background:#292940;
+ border:1px solid #b8b0e444;color:#f9f7ff;padding:11px;font-size:16px}
+.swipe-picker-list{display:grid;gap:6px;margin-top:9px}
+.swipe-picker-item{display:flex;align-items:center;gap:12px;justify-content:space-between;
+ padding:13px 11px;background:#ffffff0a;border:1px solid #ffffff10;border-radius:11px;color:white;text-align:left}
+.swipe-picker-item>div{display:grid;gap:5px}
+.swipe-picker-item strong{font-size:14px}
+.swipe-picker-item small{font-size:11px;color:#aaa4bf}
+.swipe-picker-item>span{font-size:11px;color:#d3c5ff}
+.swipe-picker-empty{color:#b6b2c8;font-size:12px}
+.swipe-picker-create form{display:grid;gap:10px}
+.swipe-picker-create button[type=submit]{border:0;border-radius:11px;padding:12px;
+ background:#beb5ff;color:#15132d;font-weight:850}
+@media(max-width:480px){.swipe-radial-pile{max-width:78px;min-width:49px;padding:4px 5px}
+ .swipe-radial-name{max-width:68px;font-size:10px}
+ .swipe-discard-destination{left:10%;top:81%;font-size:9px}
+}
+@media(prefers-reduced-motion:reduce){
+ .swipe-radial-pile,.swipe-discard-destination{transition:none}
+}
+
+/* Interactive clock ring appears only in pile organization mode. */
+.swipe-radial-clock{
+ position:absolute;inset:8% 5%;width:90%;height:84%;overflow:visible;
+ pointer-events:none;opacity:.72;
+ filter:drop-shadow(0 0 9px rgba(162,145,250,.43));
+ animation:swipe-clock-show .22s ease-out both;
+}
+.swipe-radial-draggable{touch-action:none;cursor:grab;border-color:rgba(226,205,255,.55);
+ background:rgba(54,41,99,.52)}
+.swipe-radial-draggable:active{cursor:grabbing;z-index:170;background:rgba(118,92,208,.76);
+ box-shadow:0 0 12px 3px rgba(171,146,255,.76)}
+@keyframes swipe-clock-show{from{opacity:0;transform:scale(.95)}to{opacity:.72;transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.swipe-radial-clock{animation:none}}
+
+/* Full-height list chooser scrolls on short iPhones instead of being clipped
+   by the app shell's fixed viewport. */
+.swipe-picker{height:100%;min-height:0;max-height:100dvh;overflow-y:auto;
+ -webkit-overflow-scrolling:touch;overscroll-behavior:contain}

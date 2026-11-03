@@ -13,19 +13,42 @@ export type HubCard = {
   collectorNumber?: string;
   details?: DeckCard;
 };
-export type SwipePile = "deck" | "wishlist" | "owned" | "maybe";
-export type SwipeSource = "recommendations" | SwipePile;
+export type SwipePile = "deck" | "sideboard" | "maybe" | "wishlist" | "owned" | "none";
+export interface SwiperPileDefinition {
+  id: string;
+  name: string;
+  /** Latest user-defined label; used for cross-deck aggregation. */
+  tag: string;
+  /** Angle in degrees, clockwise from the top of the radial menu. */
+  angle: number;
+  visible: boolean;
+  deleted?: boolean;
+  /** Piles sharing a group are mutually exclusive for each printing. */
+  linkedGroup?: string;
+  /** RHS destinations can feed positive recommendation context. */
+  reinforce?: boolean;
+  /** Set only on custom piles. Default pile membership derives from card zones. */
+  cards?: HubCard[];
+  updatedAt: number;
+}
+export type SwipeSource = "recommendations" | Exclude<SwipePile, "none">;
 export type SwipeCorner = "nw" | "ne" | "sw" | "se";
 export type SwipeSession = {
   deck?: HubCard[];
+  sideboard?: HubCard[];
   wishlist: HubCard[];
   owned: HubCard[];
+  positive?: HubCard[];
   maybe: HubCard[];
   rejected: string[];
   swipeCount: number;
   revisions?: ListRevision[];
   config: DeckConfig;
   corners: Record<SwipeCorner, SwipePile>;
+  sortingMode?: "section" | "status";
+  piles?: SwiperPileDefinition[];
+  sectionCorners?: Record<SwipeCorner, SwipePile>;
+  statusCorners?: Record<SwipeCorner, SwipePile>;
   source: SwipeSource;
   reviewIndex: number;
 };
@@ -275,6 +298,27 @@ export function toCard(c: HubCard): DeckCard & { quantity?: number } {
       legalities: {},
     }
   );
+}
+
+/** All cards belong to the parent list, even when stored only in a
+ * custom or tagged pile. Membership in several piles must not duplicate a
+ * physical printing in whole-list exports or card counts. */
+export function allCardsInDeck(deck: HubDeck): HubCard[] {
+  const custom = (deck.swiper?.piles || []).filter(p => !p.deleted)
+    .flatMap(p => p.cards || []);
+  const saved = deck.swiper;
+  const items = [
+    ...deck.cards, ...(saved?.deck || []), ...(saved?.sideboard || []),
+    ...(saved?.maybe || []), ...(saved?.wishlist || []),
+    ...(saved?.owned || []), ...custom,
+  ];
+  const byPrinting = new Map<string, HubCard>();
+  for (const card of items) {
+    const key = [card.oracleId || card.name.toLowerCase(),
+      card.setCode || "", card.collectorNumber || ""].join(":");
+    if (!byPrinting.has(key)) byPrinting.set(key, card);
+  }
+  return [...byPrinting.values()];
 }
 
 export function binderText(cards: HubCard[]): string {

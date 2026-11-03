@@ -12,6 +12,7 @@ import {
   listText,
   toCard,
   binderText,
+  allCardsInDeck,
   parseHubList,
 } from "../deck/hubStore";
 import type { HubCard } from "../deck/hubStore";
@@ -453,8 +454,13 @@ export function PrintBinder() {
   const available = decks.filter(d=>!d.deletedAt);
   const [selectedId,setSelectedId] = useState(search.get("deck") || "");
   const d = available.find(d=>d.id===selectedId);
-  const [zone,setZone] = useState<"all" | "main" | "sideboard" | "maybe">("all");
-  const selectedCards = d?.cards.filter(c=>zone==="all" || c.section===zone || (zone==="main"&&c.section==="commander")) || [];
+  const [zone,setZone] = useState("all");
+  const selectedCards = !d ? [] : zone === "all" ? allCardsInDeck(d)
+    : zone === "wishlist" ? d.swiper?.wishlist || (d.kind === "wishlist" ? d.cards : [])
+    : zone === "owned" ? d.swiper?.owned || (d.kind === "collection" ? d.cards : [])
+    : zone === "none" ? d.swiper?.piles?.find(p=>p.id==="none")?.cards || []
+    : d.swiper?.piles?.find(p=>p.id===zone)?.cards || d.cards.filter(c=>
+        c.section === zone || (zone === "main" && c.section === "commander"));
   const frame = useRef<HTMLIFrameElement>(null);
   const [status, setStatus] = useState("");
   const fill = () => {
@@ -477,11 +483,11 @@ export function PrintBinder() {
         input.dispatchEvent(new Event("input", { bubbles: true }));
         input.dispatchEvent(new Event("change", { bubbles: true }));
         setStatus(
-          "Deck carregado no Binder. Confira a lista e avance para escolher versões.",
+          "Lista carregada no Print Studio. Confira as cartas e escolha as versões.",
         );
       } else
         setStatus(
-          "O Binder ainda está carregando. Tente carregar o deck novamente.",
+          "O Print Studio ainda está carregando. Tente novamente.",
         );
     } catch {
       setStatus("Copie a lista e cole no campo do Binder.");
@@ -509,11 +515,17 @@ export function PrintBinder() {
           <option value="main">Main + comandante</option>
           <option value="sideboard">Side</option>
           <option value="maybe">Maybe</option>
+          <option value="wishlist">Wishlist</option>
+          <option value="owned">Tenho</option>
+          <option value="none">Nenhum</option>
+          {d?.swiper?.piles?.filter(p=>!p.deleted &&
+            !["deck","sideboard","maybe","wishlist","owned","none"].includes(p.id))
+            .map(p=><option value={p.id} key={p.id}>{p.name}</option>)}
         </select>
         {d && (
           <>
             <button className={ghost} onClick={fill}>
-              Carregar deck no Binder
+              Carregar no Print Studio
             </button>
             <button
               className={ghost}

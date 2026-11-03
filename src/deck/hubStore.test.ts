@@ -5,6 +5,7 @@ import {
   useHubStore,
   makeDeck,
   validDeck,
+  allCardsInDeck,
 } from "./hubStore";
 describe("deck imports preserve the actual list", () => {
   it("retains quantities, printings, sections and double faced names through export", () => {
@@ -84,5 +85,24 @@ describe("orthogonal deck labels and card zones", () => {
     expect(result.map(c=>c.section)).toEqual(["commander","main","sideboard","maybe"]);
     expect(parseHubList(listText(result))).toEqual(result);
     expect(validDeck({...makeDeck("Typed"),cards:result})).toBe(true);
+  });
+});
+
+describe("whole-list membership includes custom piles without duplication", () => {
+  it("counts one physical printing once even when linked to Main, Wishlist and a custom tag", () => {
+    const d = makeDeck("Urza",[{name:"Sol Ring",quantity:2,section:"main",oracleId:"sol"}]);
+    d.swiper = {
+      deck: [{name:"Sol Ring",quantity:2,section:"main",oracleId:"sol"}],
+      wishlist: [{name:"Sol Ring",quantity:2,section:"main",oracleId:"sol"}],
+      owned: [], maybe: [], rejected: [], swipeCount:1, config: {} as never,
+      source:"recommendations",reviewIndex:0,
+      corners:{nw:"maybe",ne:"deck",sw:"sideboard",se:"sideboard"},
+      piles:[{id:"trade",name:"Trade",tag:"trade",angle:90,visible:true,
+        cards:[{name:"Sol Ring",quantity:2,section:"main",oracleId:"sol"},
+          {name:"Arcane Signet",quantity:1,section:"main",oracleId:"arcane"}],
+        updatedAt:2}],
+    };
+    expect(allCardsInDeck(d).map(c=>c.name)).toEqual(["Sol Ring","Arcane Signet"]);
+    expect(allCardsInDeck(d).reduce((n,c)=>n+c.quantity,0)).toBe(3);
   });
 });

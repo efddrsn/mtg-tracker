@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { makeDeck, useHubStore, type HubDeck, type SwipeCorner, type SwipePile, type SwipeSource } from '../deck/hubStore';
-import { configureSwiperDeck, ensureSwiperWorkspace, loadSwiperDeck, persistSwiperDeck, switchSwiperDeck, swipeSessionFor } from '../deck/swiperWorkspace';
-import { useNavigate } from 'react-router-dom';
+import { makeDeck, useHubStore, toCard, type HubDeck, type ListLabel, type SwiperPileDefinition, type SwipeSource } from '../deck/hubStore';
+import { configureSwiperDeck, loadSwiperDeck, persistSwiperDeck, swipeSessionFor } from '../deck/swiperWorkspace';
+import { addPile, aggregateTaggedCards, assignCustomPile, changePile, findRadialTarget, fromRecommendationCard, isRightSide, normalizePiles, removeCustomCard } from '../deck/swiperPiles';
+import { SwiperRadialPiles } from '../components/SwiperRadialPiles';
+import { SwiperWorkspaceChooser } from '../components/SwiperWorkspaceChooser';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { SwipeCard } from '../components/SwipeCard';
 import { ConfigSheet } from '../components/ConfigSheet';
 import { DeckSheet } from '../components/DeckSheet';
@@ -18,62 +21,60 @@ function vibrate(ms: number) {
 }
 
 type Axis = 'h' | 'v' | null;
-type Decision = 'keep' | 'reject' | SwipePile;
-const PILES: { id: SwipePile; title: string }[] = [
-  { id: 'deck', title: 'Deck' }, { id: 'wishlist', title: 'Wishlist' },
-  { id: 'owned', title: 'Já tenho' }, { id: 'maybe', title: 'Talvez' },
-];
-const SOURCE_OPTIONS: { id: SwipeSource; title: string }[] = [
-  { id: 'recommendations', title: 'Recomendações' }, ...PILES,
-];
-const CORNERS: { id: SwipeCorner; title: string }[] = [
-  { id: 'nw', title: 'Superior esquerdo' }, { id: 'ne', title: 'Superior direito' },
-  { id: 'sw', title: 'Inferior esquerdo' }, { id: 'se', title: 'Inferior direito' },
-];
+const CORE_SECTIONS = ['deck', 'sideboard', 'maybe'] as const;
+const CORE_STATUS = ['wishlist', 'owned', 'none'] as const;
+const cardIdentity = (a: { oracleId?: string; name: string }, b: { oracleId?: string; name: string }) =>
+  a.oracleId && b.oracleId ? a.oracleId === b.oracleId : a.name === b.name;
 
 const AXIS_LOCK = 10; // px before we commit to an axis
 const FLY_MS = 320;
 
 export function SwipeDeck() {
   const navigate = useNavigate();
-  const activeId=useHubStore(s=>s.activeDeckId);
+  const location = useLocation();
+  const explicitDeckId = (location.state as { selectedDeckId?: string } | null)?.selectedDeckId;
   const allDecks=useHubStore(s=>s.decks);
   const decks=allDecks.filter(d=>!d.deletedAt);
   const feed = useRecommendationFeed();
-  const moveCard = useDeckStore((s) => s.moveCard);
-  const reject = useDeckStore((s) => s.reject);
-  const skip = useDeckStore((s) => s.skip);
-  const setCommander = useDeckStore((s) => s.setCommander);
-  const removeFromList = useDeckStore((s) => s.removeFromList);
 
   const commander = useDeckStore((s) => s.commander);
   const deckCards = useDeckStore(s=>s.deck);
   const wishlistCards = useDeckStore(s=>s.wishlist);
   const maybeCards = useDeckStore(s=>s.maybe);
   const ownedCards = useDeckStore(s=>s.owned);
-  const collections = { deck: deckCards, wishlist: wishlistCards, maybe: maybeCards, owned: ownedCards };
-  const pileCount = (pile: SwipePile) => collections[pile].reduce((count, card) => count + (card.quantity || 1), 0);
-  const [source, setSource] = useState<SwipeSource>('recommendations');
-  const [reviewIndex, setReviewIndex] = useState(0);
-  const [corners, setCorners] = useState<Record<SwipeCorner, SwipePile>>({
-    nw: 'maybe', ne: 'wishlist', sw: 'deck', se: 'owned',
-  });
-  const [loadedId, setLoadedId] = useState<string | null>(null);
-  const [repositioning, setRepositioning] = useState(false);
-  const [draggingCard, setDraggingCard] = useState(false);
-  const ACTIVE_DISTANCE = 18;
-  function destinationFor(x: number, y: number): SwipeCorner | 'reject' | null {
-    if (Math.hypot(x,y) < ACTIVE_DISTANCE) return null;
-    // Fixed discard lane: horizontal left or diagonal lower-left.
-    if (x < -ACTIVE_DISTANCE && (y >= -28 || y > Math.abs(x) * .3)) return 'reject';
-    if (x < -ACTIVE_DISTANCE && y < -28) return 'nw';
-    if (x > ACTIVE_DISTANCE && y < -28) return 'ne';
-    if (x > ACTIVE_DISTANCE && y >= -28) return 'se';
-    return null;
+  const sideCards = useDeckStore(s=>s.sideboard);
+  const collections = { deck: deckCards, sideboard: sideCards, wishlist: wishlistCards, maybe: maybeCards, owned: ownedCards };
+  const [piles, setPiles] = useState<SwiperPileDefinition[]>(() => normalizePiles());
+  const [choosingWorkspace, setChoosingWorkspace] = useState(!explicitDeckId);
+  function pileCards(id: string) {
+    if (id === 'recommendations' || id === 'none') return [] as DeckCard[];
+    if (id === 'deck' || id === 'sideboard' || id === 'wishlist' || id === 'maybe' || id === 'owned') return collections[id];
+    if (id.startsWith('aggregate:')) return aggregateTaggedCards(decks, id.slice(10)).map(toCard);
+    return piles.find(p=>p.id===id)?.cards?.map(toCard) || [];
   }
+  const pileCount = (id: string) => (pileCards(id) as (DeckCard & {quantity?:number})[]).reduce((count, card) => count + (card.quantity || 1), 0);
+  function savePiles(updated: SwiperPileDefinition[]) {
+    setPiles(updated);
+    if (loadedRef.current) configureSwiperDeck(loadedRef.current,{piles:updated});
+  }
+  function updatePileDefinition(id: string, changes: Partial<SwiperPileDefinition>) {
+    const updated = changePile(piles,id,changes);
+    savePiles(updated);
+    if (changes.deleted && source === id) chooseSource('recommendations');
+    // A pile moved into the RHS reinforces the existing cards as well, not
+    // just cards swiped into it after the layout change.
+    if (changes.angle !== undefined || changes.visible === true) {
+      const positive = updated.find(p => p.id === id && p.visible && isRightSide(p.angle));
+      if (positive) for (const card of pileCards(id))
+        useDeckStore.getState().reinforceCard(card);
+    }
+  }
+  const [source, setSource] = useState<string>('recommendations');
+  const [reviewIndex, setReviewIndex] = useState(0);
+  const [loadedId, setLoadedId] = useState<string | null>(null);
+  const [draggingCard, setDraggingCard] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
-  const [workspaceMenu, setWorkspaceMenu] = useState(false);
   const selectedDeck = decks.find(d => d.id === loadedId);
   function renameDeck() {
     const title = nameDraft.trim().slice(0, 100);
@@ -83,19 +84,8 @@ export function SwipeDeck() {
     setEditingName(false);
   }
   const loadedRef = useRef<string | null>(null);
-  useEffect(() => {
-    const current = ensureSwiperWorkspace();
-    if (loadedRef.current === current.id) return;
-    if (loadedRef.current) persistSwiperDeck(loadedRef.current);
-    loadSwiperDeck(current);
-    loadedRef.current = current.id;
-    const session = swipeSessionFor(current);
-    setSource(session.source);
-    setReviewIndex(session.reviewIndex);
-    setCorners(session.corners);
-    setLoadedId(current.id);
-  }, [activeId]);
-
+  // The Swiper never silently creates a deck or guesses the active one.
+  // Explicit user selection keeps legacy deck/card state untouched until opened.
   useEffect(() => {
     if (!loadedId) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -110,10 +100,11 @@ export function SwipeDeck() {
     };
   }, [loadedId]);
 
-  function chooseSource(next: SwipeSource) {
+  function chooseSource(next: string) {
     setSource(next);
     setReviewIndex(0);
-    if (loadedId) configureSwiperDeck(loadedId, { source: next, reviewIndex: 0 });
+    if (loadedId && !next.startsWith('aggregate:'))
+      configureSwiperDeck(loadedId, { source: next as SwipeSource, reviewIndex: 0 });
     history.current = [];
   }
   function advanceReview(index: number) {
@@ -121,23 +112,27 @@ export function SwipeDeck() {
     if (loadedId) configureSwiperDeck(loadedId, { reviewIndex: index });
   }
   function openWorkspace(deck: HubDeck) {
-    if (deck.id === loadedRef.current) return;
-    switchSwiperDeck(deck);
+    if (loadedRef.current && loadedRef.current !== deck.id) persistSwiperDeck(loadedRef.current);
+    loadSwiperDeck(deck);
     loadedRef.current = deck.id;
     const session = swipeSessionFor(deck);
     setSource(session.source);
     setReviewIndex(session.reviewIndex);
-    setCorners(session.corners);
+    setPiles(normalizePiles(session.piles));
     setLoadedId(deck.id);
+    setChoosingWorkspace(false);
     history.current = [];
   }
-  function createWorkspace() {
-    if (loadedId) persistSwiperDeck(loadedId);
-    const created = makeDeck('Novo deck');
+  function createWorkspace(title = 'Nova lista', label: ListLabel = 'none') {
+    const created = { ...makeDeck(title), label };
     useHubStore.getState().save(created);
     openWorkspace(created);
   }
-
+  useEffect(() => {
+    if (!explicitDeckId || loadedRef.current === explicitDeckId) return;
+    const selected = useHubStore.getState().decks.find(d=>d.id===explicitDeckId && !d.deletedAt);
+    if (selected) openWorkspace(selected);
+  }, [explicitDeckId, decks.length]);
   const pickingCommander = feed.phase === 'commander-select';
 
   // A default name follows the selected commander; custom deck titles remain untouched.
@@ -169,12 +164,12 @@ export function SwipeDeck() {
   // Offer the name search the first time we land in the commander phase; the
   // player can dismiss it and swipe instead.
   useEffect(() => {
-    if (pickingCommander && source === 'recommendations' && !autoOffered.current) {
+    if (!choosingWorkspace && pickingCommander && source === 'recommendations' && !autoOffered.current) {
       autoOffered.current = true;
       setSearchOpen(true);
     }
     if (!pickingCommander || source !== 'recommendations') autoOffered.current = false;
-  }, [pickingCommander, source]);
+  }, [pickingCommander, source, choosingWorkspace]);
 
   // Transient gesture state kept in refs to avoid stale-closure bugs.
   const start = useRef({ x: 0, y: 0 });
@@ -182,16 +177,16 @@ export function SwipeDeck() {
   const pointerId = useRef<number | null>(null);
   const busy = useRef(false);
   const history = useRef<{
-    card: DeckCard; source: SwipeSource; index: number;
-    state: ReturnType<typeof snapshot>;
+    card: DeckCard; source: string; index: number;
+    state: ReturnType<typeof snapshot>; piles: SwiperPileDefinition[];
   }[]>([]);
-  const reviewCards = source === 'recommendations' ? [] : collections[source];
+  const reviewCards = source === 'recommendations' ? [] : pileCards(source);
   const top: DeckCard | undefined = source === 'recommendations' ? feed.queue[0] : reviewCards[reviewIndex];
   const second: DeckCard | undefined = source === 'recommendations' ? feed.queue[1] : reviewCards[reviewIndex + 1];
   function snapshot() {
     const state = useDeckStore.getState();
     return {
-      deck: [...state.deck], wishlist: [...state.wishlist],
+      deck: [...state.deck], sideboard: [...state.sideboard], positive: [...state.positive], wishlist: [...state.wishlist],
       maybe: [...state.maybe], owned: [...state.owned],
       rejected: [...state.rejected], commander: state.commander,
       swipeCount: state.swipeCount, config: state.config,
@@ -201,52 +196,116 @@ export function SwipeDeck() {
 
   const sheetOpen = configOpen || deckOpen;
 
-  const commit = useCallback(
-    (decision: Decision, chosenCorner?: SwipeCorner) => {
-      if (!top || busy.current || !loadedId) return;
-      busy.current = true;
-      vibrate(decision === 'reject' ? 10 : 18);
-      history.current.push({ card: top, source, index: reviewIndex, state: snapshot() });
-      const reviewing = source !== 'recommendations';
-      // Defer the state mutation until after the current card has left the
-      // screen. Otherwise review mode would animate the next card instead.
-      const applyDecision = () => {
-        if (decision === 'keep') {
-          if (reviewing) advanceReview(reviewIndex + 1);
-        } else if (decision === 'reject') {
-          if (reviewing) removeFromList(source, top.oracleId, top);
-          else if (pickingCommander) skip(top);
-          else reject(top);
-        } else if (pickingCommander && !reviewing) {
-          setCommander(top);
-        } else {
-          moveCard(top, source, decision);
-          if (reviewing && (decision === source || source === 'owned' || decision === 'owned')) {
-            advanceReview(reviewIndex + 1);
+
+  const commit = useCallback((destination: string) => {
+    if (!top || busy.current || !loadedId || choosingWorkspace) return;
+    const target = piles.find(p => p.id === destination);
+    if (destination !== 'reject' && destination !== 'keep' && (!target || target.deleted)) return;
+    busy.current = true;
+    vibrate(destination === 'reject' ? 10 : 18);
+    history.current.push({ card: top, source, index: reviewIndex, state: snapshot(), piles });
+    const reviewing = source !== 'recommendations';
+    const apply = () => {
+      const store = useDeckStore.getState();
+      let changed = piles;
+      if (destination === 'keep') {
+        if (reviewing) advanceReview(reviewIndex + 1);
+      } else if (destination === 'reject') {
+        if (reviewing) {
+          if (source === 'deck' || source === 'sideboard' || source === 'maybe' ||
+              source === 'wishlist' || source === 'owned') {
+            store.removeFromList(source, top.oracleId, top);
+          } else if (source.startsWith('aggregate:')) {
+            store.skip(top);
+          } else {
+            changed = removeCustomCard(piles, source, fromRecommendationCard(top));
+            savePiles(changed);
           }
+        } else if (pickingCommander) store.skip(top);
+        else store.reject(top);
+      } else if (target) {
+        // Commander choice always belongs to Main, independent of the radial
+        // sorting destination. Don't accidentally move the commander to Side.
+        if (pickingCommander && !reviewing) {
+          store.setCommander(top);
+          if (target.id === 'wishlist' || target.id === 'owned' || target.id === 'none') {
+            store.setInterest(top, target.id);
+          } else if (![...store.wishlist, ...store.owned].some(c => cardIdentity(c, top))) {
+            store.setInterest(top, 'wishlist');
+          }
+          if (isRightSide(target.angle)) store.reinforceCard(top);
+          return;
         }
-      };
-      const w = window.innerWidth || 400, h = window.innerHeight || 700;
-      const corner = chosenCorner || (decision === 'keep' ? null
-        : CORNERS.find(c => corners[c.id] === decision)?.id);
-      setAnimate(true);
-      setDrag({
-        x: decision === 'reject' ? -w * 1.3
-          : decision === 'keep' ? w * 1.3
-          : corner?.endsWith('e') ? w * 1.3 : -w * 1.3,
-        y: corner?.startsWith('n') ? -h * 0.35 : corner?.startsWith('s') ? h * 0.35 : 0,
-      });
-      window.setTimeout(() => {
-        applyDecision();
+        const isSection = CORE_SECTIONS.some(id => id === target.id);
+        const isStatus = CORE_STATUS.some(id => id === target.id);
+        const inSection = [...store.deck, ...store.sideboard, ...store.maybe]
+          .some(c => cardIdentity(c, top));
+        const explicitNone = piles.find(p => p.id === 'none')?.cards
+          ?.some(c => cardIdentity(c, top));
+        const hasInterest = [...store.wishlist, ...store.owned]
+          .some(c => cardIdentity(c, top)) || explicitNone;
+        if (isSection) {
+          store.assignSection(top, target.id as 'deck' | 'sideboard' | 'maybe');
+          changed = changed.map(p => p.cards && p.linkedGroup === 'sections'
+            ? { ...p, cards: p.cards.filter(c => !cardIdentity(c, top)) } : p);
+          if (!hasInterest) store.setInterest(top, 'wishlist');
+        } else if (isStatus) {
+          store.setInterest(top, target.id as 'wishlist' | 'owned' | 'none');
+          if (!inSection) store.assignSection(top, 'deck');
+          const nonePile = changed.find(p => p.id === 'none');
+          changed = changed.map(p => p.id === 'none' && p.cards
+            ? { ...p, cards: p.cards.filter(c => !cardIdentity(c, top)) } : p);
+          if (target.id === 'none' && nonePile) changed = assignCustomPile(changed, 'none', fromRecommendationCard(top));
+          changed = changed.map(p=>p.cards && p.linkedGroup === 'interest' && p.id !== target.id
+            ? { ...p, cards:p.cards.filter(c=>!cardIdentity(c,top)) } : p);
+        } else {
+          // Membership can coexist across independent groups.
+          // Linked groups remove a previous classification in that group.
+          if (target.linkedGroup === 'sections') {
+            for (const section of CORE_SECTIONS) {
+              if (pileCards(section).some(c => cardIdentity(c, top)))
+                store.removeFromList(section, top.oracleId, top);
+            }
+          }
+          if (target.linkedGroup === 'interest') {
+            store.setInterest(top, 'none');
+            if (!inSection) store.assignSection(top, 'deck');
+          } else if (target.linkedGroup === 'sections' && !hasInterest) {
+            store.setInterest(top, 'wishlist');
+          }
+          changed = assignCustomPile(changed, target.id, fromRecommendationCard(top));
+        }
+        if (changed !== piles) savePiles(changed);
+        if (isRightSide(target.angle)) store.reinforceCard(top);
+      }
+      if (reviewing && destination !== 'keep') {
+        const updated = useDeckStore.getState();
+        const remains = source.startsWith('aggregate:') ? true :
+          source === 'deck' || source === 'sideboard' || source === 'maybe' ||
+          source === 'wishlist' || source === 'owned'
+            ? updated[source].some(c => cardIdentity(c, top))
+            : (changed.find(p=>p.id===source)?.cards || []).some(c=>cardIdentity(c,top));
+        advanceReview(reviewIndex + (remains ? 1 : 0));
+      }
+    };
+    const w = window.innerWidth || 390, h = window.innerHeight || 700;
+    const rad = (target?.angle || 270) * Math.PI / 180;
+    setAnimate(true);
+    setDrag({
+      x: destination === 'reject' ? -w * 1.35 : destination === 'keep' ? w * 1.25 : Math.sin(rad) * w * 1.4,
+      y: destination === 'reject' ? h * .2 : destination === 'keep' ? 0 : -Math.cos(rad) * h * .56,
+    });
+    window.setTimeout(() => {
+      // Do not apply a delayed swipe to another deck after a fast switch.
+      if (loadedRef.current === loadedId) {
+        apply();
         if (!reviewing) feed.advance();
-        setAnimate(false);
-        setDrag({ x: 0, y: 0 });
-        busy.current = false;
-      }, FLY_MS);
-    },
-    [top, source, loadedId, reviewIndex, corners, pickingCommander,
-      reject, skip, setCommander, moveCard, removeFromList, feed],
-  );
+      }
+      setAnimate(false);
+      setDrag({ x:0, y:0 });
+      busy.current = false;
+    }, FLY_MS);
+  }, [top, loadedId, choosingWorkspace, piles, source, reviewIndex, pickingCommander, feed]);
 
   const undo = useCallback(() => {
     if (busy.current) return;
@@ -254,47 +313,43 @@ export function SwipeDeck() {
     if (!last) return;
     vibrate(8);
     useDeckStore.setState(last.state);
+    savePiles(last.piles);
     if (last.source === 'recommendations') feed.pushFront(last.card);
     setSource(last.source);
     advanceReview(last.index);
     setAnimate(false);
-    setDrag({ x: 0, y: 0 });
+    setDrag({ x:0, y:0 });
   }, [feed, loadedId]);
-
-  // Keyboard alternatives to the removed bottom buttons. Controls that edit
-  // text or choose a pile retain their native keyboard handling.
+  // Keyboard support mirrors the radial clock in clockwise order.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (configOpen || deckOpen || searchOpen || repositioning || !top) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('input,select,textarea,button,[contenteditable="true"]')) return;
-      const destinations: Record<string, SwipeCorner> = {
-        '1': 'nw', '2': 'ne', '3': 'se',
-      };
-      if (event.key in destinations) {
-        event.preventDefault();
-        const corner = destinations[event.key];
-        commit(corners[corner], corner);
+      if (choosingWorkspace || configOpen || deckOpen || searchOpen || !top ||
+        document.querySelector('.swipe-radial-editor')) return;
+      if ((event.target as HTMLElement | null)?.closest('input,select,textarea,button,[contenteditable="true"]')) return;
+      const clockwise = piles.filter(p => p.visible && !p.deleted).sort((a,b) => a.angle-b.angle);
+      const index = Number(event.key)-1;
+      if (Number.isInteger(index) && index>=0 && index<clockwise.length) {
+        event.preventDefault(); commit(clockwise[index].id);
       } else if (event.key === 'ArrowLeft') {
-        event.preventDefault();
-        commit('reject');
+        event.preventDefault(); commit('reject');
       } else if (event.key === 'ArrowRight') {
         event.preventDefault();
-        if (source === 'recommendations') commit(corners.ne, 'ne');
-        else commit('keep');
-      } else if (event.key === 'Backspace' || (event.key.toLowerCase() === 'z' && (event.metaKey || event.ctrlKey))) {
-        event.preventDefault();
-        undo();
+        const target = clockwise.find(p => isRightSide(p.angle));
+        if (target) commit(target.id); else commit('keep');
+      } else if (event.key === 'Backspace' ||
+        (event.key.toLowerCase() === 'z' && (event.metaKey || event.ctrlKey))) {
+        event.preventDefault(); undo();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [configOpen, deckOpen, searchOpen, repositioning, top, commit, corners, source, undo]);
+  }, [choosingWorkspace, configOpen, deckOpen, searchOpen, top, piles, commit, undo]);
 
   // --- Pointer gesture handling ---------------------------------------------
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (sheetOpen || repositioning || busy.current || !top) return;
+    if (choosingWorkspace || sheetOpen || busy.current || !top ||
+      e.currentTarget.querySelector('.swipe-radial-editor')) return;
     pointerId.current = e.pointerId;
     start.current = { x: e.clientX, y: e.clientY };
     axis.current = null;
@@ -309,7 +364,9 @@ export function SwipeDeck() {
 
     if (axis.current === null) {
       if (Math.abs(dx) < AXIS_LOCK && Math.abs(dy) < AXIS_LOCK) return;
-      axis.current = (dx < -AXIS_LOCK && dy > AXIS_LOCK) || Math.abs(dx) > Math.abs(dy) * 0.35 ? 'h' : 'v';
+      // The entire clock, including vertical sectors, is available to swipe.
+      // Filters and collection drawer remain accessible from the header.
+      axis.current = 'h';
       try {
         (e.target as Element).setPointerCapture?.(e.pointerId);
       } catch { /* ignore */ }
@@ -337,23 +394,13 @@ export function SwipeDeck() {
     if (locked === 'h') {
       const threshold = (window.innerWidth || 400) * .23;
       if (Math.hypot(dx, dy) > threshold) {
-        const dest = destinationFor(dx,dy);
-        if (dest === 'reject') commit('reject');
-        else if (dest) commit(corners[dest], dest);
+        const dest = findRadialTarget(piles, dx, dy);
+        if (dest) commit(dest);
         else { setAnimate(true); setDrag({ x:0, y:0 }); }
       } else { setAnimate(true); setDrag({ x:0, y:0 }); }
-    } else if (locked === 'v') {
-      const openThreshold = (window.innerHeight || 700) * 0.16;
-      if (dy > openThreshold) {
-        setConfigOpen(true);
-        vibrate(12);
-      } else if (dy < -openThreshold) {
-        setDeckOpen(true);
-        vibrate(12);
-      }
-      setConfigDragY(0);
-      setDeckDragY(0);
     }
+    setConfigDragY(0);
+    setDeckDragY(0);
   };
 
   // --- Render ----------------------------------------------------------------
@@ -425,6 +472,11 @@ export function SwipeDeck() {
     );
   };
 
+  if (choosingWorkspace) return (
+    <SwiperWorkspaceChooser decks={decks} onOpen={openWorkspace}
+      onCreate={createWorkspace} onBack={()=>navigate('/decks')} />
+  );
+
   return (
     <div className="swipe-page">
       <header className="swipe-topbar swipe-topbar-compact">
@@ -442,24 +494,10 @@ export function SwipeDeck() {
             {selectedDeck?.title || 'Deck'} <span aria-hidden="true">✎</span>
           </button>
         )}
-        <button type="button" className="swipe-nav-icon" aria-label="Escolher outro deck" onClick={() => setWorkspaceMenu(!workspaceMenu)}>⌄</button>
+        <button type="button" className="swipe-nav-icon" aria-label="Escolher outro deck" onClick={() => setChoosingWorkspace(true)}>⌄</button>
         <button type="button" className="swipe-nav-icon" aria-label="Filtros" onClick={() => setConfigOpen(true)}>⚙</button>
         <button type="button" className="swipe-nav-icon" aria-label="Minhas pilhas" onClick={() => setDeckOpen(true)}>☷</button>
       </header>
-      {workspaceMenu && (
-        <div className="swipe-workspace-menu">
-          <select aria-label="Trocar deck" value={loadedId || ''} onChange={e => {
-            const selected = decks.find(d => d.id === e.target.value);
-            if (selected) openWorkspace(selected);
-            setWorkspaceMenu(false);
-          }}>
-            {decks.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
-          </select>
-          <button type="button" onClick={() => { createWorkspace(); setWorkspaceMenu(false); }}>+ Novo deck</button>
-          <button type="button" onClick={() => navigate('/decks/' + loadedId)}>Editar lista</button>
-        </div>
-      )}
-
       <div
         key={source}
         className="card-stage swipe-table"
@@ -470,76 +508,31 @@ export function SwipeDeck() {
       >
         {renderStack()}
         <div className="swipe-floating-context" onPointerDown={e=>e.stopPropagation()}>
-          <button type="button" className="swipe-commander-chip"
-            onClick={openCommanderSearch}>
+          <button type="button" className="swipe-commander-chip" onClick={openCommanderSearch}>
             {commander ? commander.name : pickingCommander ? 'Escolher comandante' : 'Comandante'}
           </button>
-          <select aria-label="Pilha no centro" value={source}
-            onChange={e => chooseSource(e.target.value as SwipeSource)}>
-            {SOURCE_OPTIONS.map(option => <option key={option.id} value={option.id}>
-              {option.title} {option.id === 'recommendations' ? '∞' : pileCount(option.id)}
-            </option>)}
+          <select aria-label="Pilha central" value={source}
+            onChange={e=>chooseSource(e.target.value)}>
+            <option value="recommendations">Recomendações ∞</option>
+            {piles.filter(p=>!p.deleted && p.id!=='none').map(p=>
+              <option value={p.id} key={p.id}>{p.name} {pileCount(p.id)}</option>)}
+            {source.startsWith('aggregate:') && <option value={source}>Todas #{source.slice(10)}</option>}
           </select>
         </div>
-        <div
-          className={`swipe-corner swipe-corner-sw swipe-trash ${draggingCard && destinationFor(drag.x,drag.y)==='reject' ? 'swipe-target-active' : ''}`}
-          aria-label="Descarte fixo: arraste à esquerda ou abaixo à esquerda"
-          title="Descarte: esquerda ou diagonal inferior esquerda">
-          <span>Descartar</span><span>×</span>
-        </div>
-        {CORNERS.filter(c=>c.id!=='sw').map(corner => (
-          <button type="button"
-            className={`swipe-corner swipe-corner-${corner.id} ${draggingCard && destinationFor(drag.x,drag.y)===corner.id ? 'swipe-target-active' : ''} ${source===corners[corner.id] ? 'swipe-target-center' : ''}`}
-            key={corner.id}
-            onClick={() => chooseSource(corners[corner.id])}
-            onPointerDown={e=>e.stopPropagation()}
-            aria-label={`Centralizar ${PILES.find(p=>p.id===corners[corner.id])?.title}`}
-            title="Toque para centralizar">
-            <span>{PILES.find(p=>p.id===corners[corner.id])?.title}</span>
-            <span>{pileCount(corners[corner.id])}</span>
-          </button>
-        ))}
-        <button type="button" className="swipe-pile-arrange"
-          onPointerDown={e=>e.stopPropagation()}
-          onClick={()=>setRepositioning(!repositioning)}
-          aria-expanded={repositioning}
-          aria-label="Reorganizar pilhas">
-          {repositioning ? 'Concluir' : 'Organizar'}
-        </button>
-        {repositioning && (
-          <div className="swipe-pile-arranger" onPointerDown={e=>e.stopPropagation()}>
-            <h3>Posição das pilhas</h3>
-            <p>Toque em um destino para reposicioná-lo. O descarte permanece abaixo à esquerda.</p>
-            {CORNERS.filter(c=>c.id!=='sw').map(c=>(
-              <label key={c.id}>
-                {c.title}
-                <select value={corners[c.id]} onChange={e=>{
-                  const next=e.target.value as SwipePile;
-                  const old=corners[c.id];
-                  const other=(['nw','ne','se'] as SwipeCorner[]).find(key=>key!==c.id && corners[key]===next);
-                  const rearranged={...corners,[c.id]:next,...(other?{[other]:old}:{})};
-                  setCorners(rearranged);
-                  if(loadedId) configureSwiperDeck(loadedId,{corners:rearranged});
-                }}>
-                  {PILES.map(p=><option value={p.id} key={p.id}>{p.title}</option>)}
-                </select>
-              </label>
-            ))}
-            <button type="button" onClick={()=>setRepositioning(false)}>Concluir</button>
-          </div>
-        )}
-        {top && Math.abs(drag.x) > 8 && (
-          <div
-            className={`swipe-decision-overlay ${drag.x > 0 ? 'swipe-decision-positive' : 'swipe-decision-negative'}`}
-            style={{ opacity: Math.min(1, Math.abs(drag.x) / 100) }}
-            aria-hidden="true"
-          >
-            {Math.abs(drag.y) > 35
-              ? PILES.find(p => p.id === corners[drag.y < 0
-                ? (drag.x < 0 ? 'nw' : 'ne')
-                : (drag.x < 0 ? 'sw' : 'se')])?.title
-              : drag.x < 0 ? 'PASSAR' : source !== 'recommendations' ? 'MANTER'
-                : PILES.find(p => p.id === corners.ne)?.title}
+        <SwiperRadialPiles piles={piles} activeSource={source}
+          activeTarget={draggingCard ? findRadialTarget(piles,drag.x,drag.y) : null}
+          dragging={draggingCard} count={pileCount} onCenter={chooseSource}
+          onAggregate={tag=>chooseSource('aggregate:'+tag)}
+          onUpdate={updatePileDefinition}
+          onAdd={(name,tag,angle,group)=>savePiles(addPile(piles,{
+            name,tag,angle,linkedGroup:group,
+          }))}/>
+        {top && Math.hypot(drag.x, drag.y) > 8 && (
+          <div className={`swipe-decision-overlay ${findRadialTarget(piles,drag.x,drag.y)==='reject' ? 'swipe-decision-negative' : 'swipe-decision-positive'}`}
+            style={{opacity:Math.min(1,Math.hypot(drag.x,drag.y)/110)}} aria-hidden="true">
+            {findRadialTarget(piles,drag.x,drag.y)==='reject'
+              ? 'DESCARTAR'
+              : piles.find(p=>p.id===findRadialTarget(piles,drag.x,drag.y))?.name || ''}
           </div>
         )}
 

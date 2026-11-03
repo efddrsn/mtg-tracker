@@ -128,3 +128,36 @@ describe('pile table decisions', () => {
   });
 
 });
+
+describe('orthogonal section and interest decisions', () => {
+  it('moves between Main, Sideboard and Maybe without deleting wishlist', () => {
+    const c = card('Sol Ring');
+    useDeckStore.getState().assignSection(c, 'deck');
+    useDeckStore.getState().setInterest(c, 'wishlist');
+    useDeckStore.getState().assignSection(c, 'sideboard');
+    expect(useDeckStore.getState().deck).toHaveLength(0);
+    expect(useDeckStore.getState().sideboard).toHaveLength(1);
+    expect(useDeckStore.getState().wishlist).toHaveLength(1);
+    useDeckStore.getState().assignSection(c, 'maybe');
+    expect(useDeckStore.getState().sideboard).toHaveLength(0);
+    expect(useDeckStore.getState().maybe).toHaveLength(1);
+  });
+  it('changes wishlist/have/none without affecting Main/Sideboard', () => {
+    const c = card('Arcane Signet');
+    useDeckStore.getState().assignSection(c, 'sideboard');
+    useDeckStore.getState().setInterest(c, 'wishlist');
+    useDeckStore.getState().setInterest(c, 'owned');
+    expect(useDeckStore.getState().wishlist).toHaveLength(0);
+    expect(useDeckStore.getState().owned).toHaveLength(1);
+    useDeckStore.getState().setInterest(c, 'none');
+    expect(useDeckStore.getState().owned).toHaveLength(0);
+    expect(useDeckStore.getState().sideboard).toHaveLength(1);
+  });
+  it('keeps positive examples separate from real deck membership', () => {
+    const c = card('Counterspell');
+    useDeckStore.getState().reinforceCard(c);
+    useDeckStore.getState().reinforceCard(c);
+    expect(useDeckStore.getState().positive).toHaveLength(1);
+    expect(useDeckStore.getState().deck).toHaveLength(0);
+  });
+});

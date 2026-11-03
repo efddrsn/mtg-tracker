@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useHubStore, makeDeck, fromCards } from '../deck/hubStore';
+import { useHubStore } from '../deck/hubStore';
 import { copy, download } from '../deck/hubApi';
 import { useRef, useState } from 'react';
 import { useDeckStore, type CardList, type SavedCard } from '../deck/deckStore';
@@ -12,7 +12,7 @@ interface DeckSheetProps {
   open: boolean;
   dragY: number;
   onClose: () => void;
-  onReview?: (list: CardList) => void;
+  onReview?: (list: string) => void;
 }
 
 function manaSymbols(cost: string): string {
@@ -92,6 +92,7 @@ export function DeckSheet({ open, dragY, onClose, onReview }: DeckSheetProps) {
   const [status,setStatus]=useState('');
   const [manual,setManual]=useState('');
   const deck = useDeckStore((s) => s.deck);
+  const sideboard = useDeckStore((s) => s.sideboard);
   const wishlist = useDeckStore((s) => s.wishlist);
   const maybe = useDeckStore((s) => s.maybe);
   const owned = useDeckStore((s) => s.owned);
@@ -100,12 +101,15 @@ export function DeckSheet({ open, dragY, onClose, onReview }: DeckSheetProps) {
   const saveRevision = useDeckStore((s) => s.saveRevision);
   const restoreRevision = useDeckStore((s) => s.restoreRevision);
   const deleteRevision = useDeckStore((s) => s.deleteRevision);
-  const [active, setActive] = useState<CardList>('wishlist');
+  const [active, setActive] = useState<CardList>('deck');
   const [addOpen, setAddOpen] = useState(false);
   const [preview, setPreview] = useState<SavedCard | null>(null);
   const [versionCard, setVersionCard] = useState<SavedCard | null>(null);
   const [storeExportOpen, setStoreExportOpen] = useState(false);
-  const cards = { deck, wishlist, maybe, owned }[active];
+  const cards = { deck, sideboard, wishlist, maybe, owned }[active];
+  const customPiles = activeDeck?.swiper?.piles?.filter(p => !p.deleted &&
+    !['deck','sideboard','maybe','wishlist','owned','none'].includes(p.id)) || [];
+  const nonePile = activeDeck?.swiper?.piles?.find(p => p.id === 'none' && !p.deleted);
 
   const exportList = () => {
     const text=cards.map(listLine).join('\n');setManual(text);void copy(text).then(setStatus).catch((e:Error)=>setStatus(e.message));
@@ -132,7 +136,7 @@ export function DeckSheet({ open, dragY, onClose, onReview }: DeckSheetProps) {
       >
         <div className="sheet-grabber" />
         <div className="sheet-header collections-header">
-          <h2>{activeDeck?.title || 'Minhas listas'}</h2>
+          <h2>Pilhas de {activeDeck?.title || 'sua lista'}</h2>
           <div className="deck-header-actions">
             <button type="button" className="sheet-text-btn" onClick={() => saveRevision()}>
               Salvar versão
@@ -145,22 +149,26 @@ export function DeckSheet({ open, dragY, onClose, onReview }: DeckSheetProps) {
 
         <div className="collection-tabs">
           {([
-            ['deck', 'Deck', deck.length],
+            ['deck', 'Main', deck.length],
+            ['sideboard', 'Side', sideboard.length],
+            ['maybe', 'Maybe', maybe.length],
             ['wishlist', 'Wishlist', wishlist.length],
-            ['maybe', 'Talvez', maybe.length],
-            ['owned', 'Já tenho', owned.length],
-          ] as const).map(([list, title, count]) => (
-            <button
-              type="button"
-              key={list}
+            ['owned', 'Tenho', owned.length],
+          ] as const).map(([list,title,count]) => (
+            <button type="button" key={list}
               className={active === list ? 'collection-tab-on' : ''}
-              onClick={() => setActive(list)}
-            >
+              onClick={() => setActive(list)}>
               {title} <b>{count}</b>
             </button>
           ))}
         </div>
-
+        {(nonePile || customPiles.length > 0) && <div className="collection-extra-piles">
+          <span>Outras pilhas</span>
+          {[...customPiles,...(nonePile ? [nonePile] : [])].map(p=>
+            <button type="button" key={p.id} onClick={()=>{onReview?.(p.id);onClose();}}>
+              {p.name} {p.cards?.length || 0}
+            </button>)}
+        </div>}
         <div className="collection-actions">
           <button type="button" onClick={exportList} disabled={cards.length === 0}>Copiar lista</button>
           <button type="button" onClick={() => { onReview?.(active); onClose(); }} disabled={!cards.length}>
@@ -191,20 +199,9 @@ export function DeckSheet({ open, dragY, onClose, onReview }: DeckSheetProps) {
         </div>
 
         <div className="collection-actions">
-          {active === 'deck' ? (
-            <button type="button" onClick={()=>{onClose();navigate(activeDeck?'/decks/'+activeDeck.id:'/decks');}}>
-              Abrir em Meus decks
-            </button>
-          ) : (
-            <button type="button" disabled={!cards.length} onClick={()=>{
-              const additions=fromCards(cards);
-              const d=makeDeck(active==='wishlist'?'Minha wishlist':active==='maybe'?'Talvez':'Minha coleção',
-                additions,active==='wishlist'?'wishlist':'collection');
-              useHubStore.getState().save(d);onClose();navigate('/decks/'+d.id);
-            }}>
-              Salvar como lista independente
-            </button>
-          )}
+          <button type="button" onClick={()=>{onClose();navigate(activeDeck?'/decks/'+activeDeck.id:'/decks');}}>
+            Abrir lista na biblioteca
+          </button>
           <button type="button" disabled={!cards.length} onClick={()=>{download('minhas-cartas.txt',cards.map(listLine).join('\n'));setStatus('Download iniciado.');}}>Baixar TXT</button>
           <button type="button" onClick={onClose}>Fechar lista</button>
         </div>
@@ -213,9 +210,10 @@ export function DeckSheet({ open, dragY, onClose, onReview }: DeckSheetProps) {
         <div className="deck-list">
           {cards.length === 0 ? (
             <div className="deck-empty">
-              <p>{active === 'deck' ? 'Este deck está vazio.' :
-                active === 'wishlist' ? 'Sua wishlist está vazia.' :
-                active === 'maybe' ? 'Nenhuma carta em Talvez.' : 'Nenhuma carta marcada como já tenho.'}</p>
+              <p>{active === 'deck' ? 'Main vazio.' :
+                active === 'sideboard' ? 'Sideboard vazio.' :
+                active === 'wishlist' ? 'Wishlist vazia.' :
+                active === 'maybe' ? 'Maybe vazio.' : 'Nenhuma carta marcada como tenho.'}</p>
               <p className="deck-empty-hint">Use o gesto diagonal para a direita no feed.</p>
             </div>
           ) : cards.map((card, index) => (
