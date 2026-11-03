@@ -323,7 +323,8 @@ export function SwipeDeck() {
   // Keyboard support mirrors the radial clock in clockwise order.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (choosingWorkspace || configOpen || deckOpen || searchOpen || !top) return;
+      if (choosingWorkspace || configOpen || deckOpen || searchOpen || !top ||
+        document.querySelector('.swipe-radial-editor')) return;
       if ((event.target as HTMLElement | null)?.closest('input,select,textarea,button,[contenteditable="true"]')) return;
       const clockwise = piles.filter(p => p.visible && !p.deleted).sort((a,b) => a.angle-b.angle);
       const index = Number(event.key)-1;
@@ -347,7 +348,8 @@ export function SwipeDeck() {
   // --- Pointer gesture handling ---------------------------------------------
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (choosingWorkspace || sheetOpen || busy.current || !top) return;
+    if (choosingWorkspace || sheetOpen || busy.current || !top ||
+      e.currentTarget.querySelector('.swipe-radial-editor')) return;
     pointerId.current = e.pointerId;
     start.current = { x: e.clientX, y: e.clientY };
     axis.current = null;
