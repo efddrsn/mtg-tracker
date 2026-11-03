@@ -41,7 +41,7 @@ export function normalizePiles(stored?: SwiperPileDefinition[]): SwiperPileDefin
       angle: pileAngle(Number.isFinite(original.angle) ? original.angle : base?.angle ?? 0),
       visible: original.visible !== false,
       updatedAt: original.updatedAt || 0,
-      cards: base ? undefined : original.cards || [],
+      cards: base && original.id !== "none" ? undefined : original.cards || [],
     });
   }
   // Existing layouts get to keep their latest chosen visible position.
