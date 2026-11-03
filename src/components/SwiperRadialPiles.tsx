@@ -41,7 +41,7 @@ export function SwiperRadialPiles({
         {shown.map(p => {
           const rad = p.angle * Math.PI / 180;
           const x = 50 + Math.sin(rad) * 42;
-          const y = 50 - Math.cos(rad) * 43;
+          const y = 50 - Math.cos(rad) * 36;
           const positive = isRightSide(p.angle);
           return <button type="button" key={p.id}
             className={`swipe-radial-pile ${dragging && activeTarget === p.id ? "swipe-target-active" : ""} ${activeSource === p.id ? "swipe-target-center" : ""}`}
