@@ -212,7 +212,18 @@ export function SwipeDeck() {
         } else if (pickingCommander) store.skip(top);
         else store.reject(top);
       } else if (target) {
-        if (pickingCommander && !reviewing) store.setCommander(top);
+        // Commander choice always belongs to Main, independent of the radial
+        // sorting destination. Don't accidentally move the commander to Side.
+        if (pickingCommander && !reviewing) {
+          store.setCommander(top);
+          if (target.id === 'wishlist' || target.id === 'owned' || target.id === 'none') {
+            store.setInterest(top, target.id);
+          } else if (![...store.wishlist, ...store.owned].some(c => cardIdentity(c, top))) {
+            store.setInterest(top, 'wishlist');
+          }
+          if (isRightSide(target.angle)) store.reinforceCard(top);
+          return;
+        }
         const isSection = CORE_SECTIONS.some(id => id === target.id);
         const isStatus = CORE_STATUS.some(id => id === target.id);
         const inSection = [...store.deck, ...store.sideboard, ...store.maybe]
