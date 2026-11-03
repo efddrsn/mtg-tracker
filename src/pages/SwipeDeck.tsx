@@ -21,7 +21,6 @@ function vibrate(ms: number) {
 }
 
 type Axis = 'h' | 'v' | null;
-type Decision = 'keep' | 'reject' | SwipePile;
 const CORE_SECTIONS = ['deck', 'sideboard', 'maybe'] as const;
 const CORE_STATUS = ['wishlist', 'owned', 'none'] as const;
 const cardIdentity = (a: { oracleId?: string; name: string }, b: { oracleId?: string; name: string }) =>
@@ -32,7 +31,6 @@ const FLY_MS = 320;
 
 export function SwipeDeck() {
   const navigate = useNavigate();
-  const activeId=useHubStore(s=>s.activeDeckId);
   const allDecks=useHubStore(s=>s.decks);
   const decks=allDecks.filter(d=>!d.deletedAt);
   const feed = useRecommendationFeed();
@@ -160,7 +158,7 @@ export function SwipeDeck() {
   const pointerId = useRef<number | null>(null);
   const busy = useRef(false);
   const history = useRef<{
-    card: DeckCard; source: SwipeSource; index: number;
+    card: DeckCard; source: string; index: number;
     state: ReturnType<typeof snapshot>; piles: SwiperPileDefinition[];
   }[]>([]);
   const reviewCards = source === 'recommendations' ? [] : pileCards(source);
