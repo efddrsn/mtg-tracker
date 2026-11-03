@@ -18,7 +18,7 @@ export function normalizedDestinations(
   mode: SortMode = "section",
 ): Record<SwipeCorner, SwipePile> {
   const allowed = mode === "section" ? SECTION_PILES : [...STATUS_PILES, "none" as SwipePile];
-  const base = mode === "section"
+  const base: Record<"nw" | "ne" | "se", SwipePile> = mode === "section"
     ? { nw: "maybe", ne: "deck", se: "sideboard" }
     : { nw: "wishlist", ne: "owned", se: "none" as SwipePile };
   const result = { ...base } as Record<SwipeCorner, SwipePile>;
@@ -68,7 +68,7 @@ export function swipeSessionFor(deck: HubDeck): SwipeSession {
     swipeCount: stored?.swipeCount || 0,
     revisions: stored?.revisions || [],
     config,
-    source: stored?.source || (stored?.sortingMode === "status" ? "deck" : "wishlist"),
+    source: stored?.source || "recommendations",
     reviewIndex: stored?.reviewIndex || 0,
     corners: normalizedDestinations(stored?.corners, stored?.sortingMode || "section"),
     sortingMode: stored?.sortingMode || "section",
@@ -92,7 +92,7 @@ export function hydratedDeckState(deck: HubDeck) {
   const loadedMaybe = asSaved(deck.cards.filter(c => c.section === "maybe"));
   // A saved session is authoritative even when a pile is now empty; the
   // canonical deck.cards still supports imported lists without session data.
-  const sideboard = deck.swiper ? asSaved(session.sideboard || loadedSide) : loadedSide;
+  const sideboard = deck.swiper ? asSaved(session.sideboard || deck.cards.filter(c => c.section === "sideboard")) : loadedSide;
   const maybe = deck.swiper ? asSaved(session.maybe) : loadedMaybe;
   const wishlist = asSaved(session.wishlist.length
     ? session.wishlist
