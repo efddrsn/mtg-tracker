@@ -5,7 +5,7 @@ import { configureSwiperDeck, loadSwiperDeck, persistSwiperDeck, swipeSessionFor
 import { addPile, aggregateTaggedCards, assignCustomPile, changePile, findRadialTarget, fromRecommendationCard, isRightSide, normalizePiles, removeCustomCard } from '../deck/swiperPiles';
 import { SwiperRadialPiles } from '../components/SwiperRadialPiles';
 import { SwiperWorkspaceChooser } from '../components/SwiperWorkspaceChooser';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { SwipeCard } from '../components/SwipeCard';
 import { ConfigSheet } from '../components/ConfigSheet';
 import { DeckSheet } from '../components/DeckSheet';
@@ -31,6 +31,8 @@ const FLY_MS = 320;
 
 export function SwipeDeck() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const explicitDeckId = (location.state as { selectedDeckId?: string } | null)?.selectedDeckId;
   const allDecks=useHubStore(s=>s.decks);
   const decks=allDecks.filter(d=>!d.deletedAt);
   const feed = useRecommendationFeed();
@@ -43,7 +45,7 @@ export function SwipeDeck() {
   const sideCards = useDeckStore(s=>s.sideboard);
   const collections = { deck: deckCards, sideboard: sideCards, wishlist: wishlistCards, maybe: maybeCards, owned: ownedCards };
   const [piles, setPiles] = useState<SwiperPileDefinition[]>(() => normalizePiles());
-  const [choosingWorkspace, setChoosingWorkspace] = useState(true);
+  const [choosingWorkspace, setChoosingWorkspace] = useState(!explicitDeckId);
   function pileCards(id: string) {
     if (id === 'recommendations' || id === 'none') return [] as DeckCard[];
     if (id === 'deck' || id === 'sideboard' || id === 'wishlist' || id === 'maybe' || id === 'owned') return collections[id];
@@ -114,6 +116,11 @@ export function SwipeDeck() {
     useHubStore.getState().save(created);
     openWorkspace(created);
   }
+  useEffect(() => {
+    if (!explicitDeckId || loadedRef.current === explicitDeckId) return;
+    const selected = useHubStore.getState().decks.find(d=>d.id===explicitDeckId && !d.deletedAt);
+    if (selected) openWorkspace(selected);
+  }, [explicitDeckId, decks.length]);
   const pickingCommander = feed.phase === 'commander-select';
 
   // A default name follows the selected commander; custom deck titles remain untouched.
