@@ -65,11 +65,9 @@ export function SwipeDeck() {
   const [source, setSource] = useState<string>('recommendations');
   const [reviewIndex, setReviewIndex] = useState(0);
   const [loadedId, setLoadedId] = useState<string | null>(null);
-  const [repositioning, setRepositioning] = useState(false);
   const [draggingCard, setDraggingCard] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
-  const [workspaceMenu, setWorkspaceMenu] = useState(false);
   const selectedDeck = decks.find(d => d.id === loadedId);
   function renameDeck() {
     const title = nameDraft.trim().slice(0, 100);
@@ -278,40 +276,34 @@ export function SwipeDeck() {
     setAnimate(false);
     setDrag({ x:0, y:0 });
   }, [feed, loadedId]);
-  // Keyboard alternatives to the removed bottom buttons. Controls that edit
-  // text or choose a pile retain their native keyboard handling.
+  // Keyboard support mirrors the radial clock in clockwise order.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (configOpen || deckOpen || searchOpen || repositioning || !top) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('input,select,textarea,button,[contenteditable="true"]')) return;
-      const destinations: Record<string, SwipeCorner> = {
-        '1': 'nw', '2': 'ne', '3': 'se',
-      };
-      if (event.key in destinations) {
-        event.preventDefault();
-        const corner = destinations[event.key];
-        commit(corners[corner], corner);
+      if (choosingWorkspace || configOpen || deckOpen || searchOpen || !top) return;
+      if ((event.target as HTMLElement | null)?.closest('input,select,textarea,button,[contenteditable="true"]')) return;
+      const clockwise = piles.filter(p => p.visible && !p.deleted).sort((a,b) => a.angle-b.angle);
+      const index = Number(event.key)-1;
+      if (Number.isInteger(index) && index>=0 && index<clockwise.length) {
+        event.preventDefault(); commit(clockwise[index].id);
       } else if (event.key === 'ArrowLeft') {
-        event.preventDefault();
-        commit('reject');
+        event.preventDefault(); commit('reject');
       } else if (event.key === 'ArrowRight') {
         event.preventDefault();
-        if (source === 'recommendations') commit(corners.ne, 'ne');
-        else commit('keep');
-      } else if (event.key === 'Backspace' || (event.key.toLowerCase() === 'z' && (event.metaKey || event.ctrlKey))) {
-        event.preventDefault();
-        undo();
+        const target = clockwise.find(p => isRightSide(p.angle));
+        if (target) commit(target.id); else commit('keep');
+      } else if (event.key === 'Backspace' ||
+        (event.key.toLowerCase() === 'z' && (event.metaKey || event.ctrlKey))) {
+        event.preventDefault(); undo();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [configOpen, deckOpen, searchOpen, repositioning, top, commit, corners, source, undo]);
+  }, [choosingWorkspace, configOpen, deckOpen, searchOpen, top, piles, commit, undo]);
 
   // --- Pointer gesture handling ---------------------------------------------
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (sheetOpen || repositioning || busy.current || !top) return;
+    if (choosingWorkspace || sheetOpen || busy.current || !top) return;
     pointerId.current = e.pointerId;
     start.current = { x: e.clientX, y: e.clientY };
     axis.current = null;
@@ -326,7 +318,9 @@ export function SwipeDeck() {
 
     if (axis.current === null) {
       if (Math.abs(dx) < AXIS_LOCK && Math.abs(dy) < AXIS_LOCK) return;
-      axis.current = (dx < -AXIS_LOCK && dy > AXIS_LOCK) || Math.abs(dx) > Math.abs(dy) * 0.35 ? 'h' : 'v';
+      // The entire clock, including vertical sectors, is available to swipe.
+      // Filters and collection drawer remain accessible from the header.
+      axis.current = 'h';
       try {
         (e.target as Element).setPointerCapture?.(e.pointerId);
       } catch { /* ignore */ }
@@ -354,23 +348,13 @@ export function SwipeDeck() {
     if (locked === 'h') {
       const threshold = (window.innerWidth || 400) * .23;
       if (Math.hypot(dx, dy) > threshold) {
-        const dest = destinationFor(dx,dy);
-        if (dest === 'reject') commit('reject');
-        else if (dest) commit(corners[dest], dest);
+        const dest = findRadialTarget(piles, dx, dy);
+        if (dest) commit(dest);
         else { setAnimate(true); setDrag({ x:0, y:0 }); }
       } else { setAnimate(true); setDrag({ x:0, y:0 }); }
-    } else if (locked === 'v') {
-      const openThreshold = (window.innerHeight || 700) * 0.16;
-      if (dy > openThreshold) {
-        setConfigOpen(true);
-        vibrate(12);
-      } else if (dy < -openThreshold) {
-        setDeckOpen(true);
-        vibrate(12);
-      }
-      setConfigDragY(0);
-      setDeckDragY(0);
     }
+    setConfigDragY(0);
+    setDeckDragY(0);
   };
 
   // --- Render ----------------------------------------------------------------
@@ -442,6 +426,11 @@ export function SwipeDeck() {
     );
   };
 
+  if (choosingWorkspace) return (
+    <SwiperWorkspaceChooser decks={decks} onOpen={openWorkspace}
+      onCreate={createWorkspace} onBack={()=>navigate('/decks')} />
+  );
+
   return (
     <div className="swipe-page">
       <header className="swipe-topbar swipe-topbar-compact">
@@ -459,24 +448,10 @@ export function SwipeDeck() {
             {selectedDeck?.title || 'Deck'} <span aria-hidden="true">✎</span>
           </button>
         )}
-        <button type="button" className="swipe-nav-icon" aria-label="Escolher outro deck" onClick={() => setWorkspaceMenu(!workspaceMenu)}>⌄</button>
+        <button type="button" className="swipe-nav-icon" aria-label="Escolher outro deck" onClick={() => setChoosingWorkspace(true)}>⌄</button>
         <button type="button" className="swipe-nav-icon" aria-label="Filtros" onClick={() => setConfigOpen(true)}>⚙</button>
         <button type="button" className="swipe-nav-icon" aria-label="Minhas pilhas" onClick={() => setDeckOpen(true)}>☷</button>
       </header>
-      {workspaceMenu && (
-        <div className="swipe-workspace-menu">
-          <select aria-label="Trocar deck" value={loadedId || ''} onChange={e => {
-            const selected = decks.find(d => d.id === e.target.value);
-            if (selected) openWorkspace(selected);
-            setWorkspaceMenu(false);
-          }}>
-            {decks.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
-          </select>
-          <button type="button" onClick={() => { createWorkspace(); setWorkspaceMenu(false); }}>+ Novo deck</button>
-          <button type="button" onClick={() => navigate('/decks/' + loadedId)}>Editar lista</button>
-        </div>
-      )}
-
       <div
         key={source}
         className="card-stage swipe-table"
@@ -487,76 +462,31 @@ export function SwipeDeck() {
       >
         {renderStack()}
         <div className="swipe-floating-context" onPointerDown={e=>e.stopPropagation()}>
-          <button type="button" className="swipe-commander-chip"
-            onClick={openCommanderSearch}>
+          <button type="button" className="swipe-commander-chip" onClick={openCommanderSearch}>
             {commander ? commander.name : pickingCommander ? 'Escolher comandante' : 'Comandante'}
           </button>
-          <select aria-label="Pilha no centro" value={source}
-            onChange={e => chooseSource(e.target.value as SwipeSource)}>
-            {SOURCE_OPTIONS.map(option => <option key={option.id} value={option.id}>
-              {option.title} {option.id === 'recommendations' ? '∞' : pileCount(option.id)}
-            </option>)}
+          <select aria-label="Pilha central" value={source}
+            onChange={e=>chooseSource(e.target.value)}>
+            <option value="recommendations">Recomendações ∞</option>
+            {piles.filter(p=>!p.deleted && p.id!=='none').map(p=>
+              <option value={p.id} key={p.id}>{p.name} {pileCount(p.id)}</option>)}
+            {source.startsWith('aggregate:') && <option value={source}>Todas #{source.slice(10)}</option>}
           </select>
         </div>
-        <div
-          className={`swipe-corner swipe-corner-sw swipe-trash ${draggingCard && destinationFor(drag.x,drag.y)==='reject' ? 'swipe-target-active' : ''}`}
-          aria-label="Descarte fixo: arraste à esquerda ou abaixo à esquerda"
-          title="Descarte: esquerda ou diagonal inferior esquerda">
-          <span>Descartar</span><span>×</span>
-        </div>
-        {CORNERS.filter(c=>c.id!=='sw').map(corner => (
-          <button type="button"
-            className={`swipe-corner swipe-corner-${corner.id} ${draggingCard && destinationFor(drag.x,drag.y)===corner.id ? 'swipe-target-active' : ''} ${source===corners[corner.id] ? 'swipe-target-center' : ''}`}
-            key={corner.id}
-            onClick={() => chooseSource(corners[corner.id])}
-            onPointerDown={e=>e.stopPropagation()}
-            aria-label={`Centralizar ${PILES.find(p=>p.id===corners[corner.id])?.title}`}
-            title="Toque para centralizar">
-            <span>{PILES.find(p=>p.id===corners[corner.id])?.title}</span>
-            <span>{pileCount(corners[corner.id])}</span>
-          </button>
-        ))}
-        <button type="button" className="swipe-pile-arrange"
-          onPointerDown={e=>e.stopPropagation()}
-          onClick={()=>setRepositioning(!repositioning)}
-          aria-expanded={repositioning}
-          aria-label="Reorganizar pilhas">
-          {repositioning ? 'Concluir' : 'Organizar'}
-        </button>
-        {repositioning && (
-          <div className="swipe-pile-arranger" onPointerDown={e=>e.stopPropagation()}>
-            <h3>Posição das pilhas</h3>
-            <p>Toque em um destino para reposicioná-lo. O descarte permanece abaixo à esquerda.</p>
-            {CORNERS.filter(c=>c.id!=='sw').map(c=>(
-              <label key={c.id}>
-                {c.title}
-                <select value={corners[c.id]} onChange={e=>{
-                  const next=e.target.value as SwipePile;
-                  const old=corners[c.id];
-                  const other=(['nw','ne','se'] as SwipeCorner[]).find(key=>key!==c.id && corners[key]===next);
-                  const rearranged={...corners,[c.id]:next,...(other?{[other]:old}:{})};
-                  setCorners(rearranged);
-                  if(loadedId) configureSwiperDeck(loadedId,{corners:rearranged});
-                }}>
-                  {PILES.map(p=><option value={p.id} key={p.id}>{p.title}</option>)}
-                </select>
-              </label>
-            ))}
-            <button type="button" onClick={()=>setRepositioning(false)}>Concluir</button>
-          </div>
-        )}
-        {top && Math.abs(drag.x) > 8 && (
-          <div
-            className={`swipe-decision-overlay ${drag.x > 0 ? 'swipe-decision-positive' : 'swipe-decision-negative'}`}
-            style={{ opacity: Math.min(1, Math.abs(drag.x) / 100) }}
-            aria-hidden="true"
-          >
-            {Math.abs(drag.y) > 35
-              ? PILES.find(p => p.id === corners[drag.y < 0
-                ? (drag.x < 0 ? 'nw' : 'ne')
-                : (drag.x < 0 ? 'sw' : 'se')])?.title
-              : drag.x < 0 ? 'PASSAR' : source !== 'recommendations' ? 'MANTER'
-                : PILES.find(p => p.id === corners.ne)?.title}
+        <SwiperRadialPiles piles={piles} activeSource={source}
+          activeTarget={draggingCard ? findRadialTarget(piles,drag.x,drag.y) : null}
+          dragging={draggingCard} count={pileCount} onCenter={chooseSource}
+          onAggregate={tag=>chooseSource('aggregate:'+tag)}
+          onUpdate={(id,changes)=>savePiles(changePile(piles,id,changes))}
+          onAdd={(name,tag,angle,group)=>savePiles(addPile(piles,{
+            name,tag,angle,linkedGroup:group,
+          }))}/>
+        {top && Math.hypot(drag.x, drag.y) > 8 && (
+          <div className={`swipe-decision-overlay ${findRadialTarget(piles,drag.x,drag.y)==='reject' ? 'swipe-decision-negative' : 'swipe-decision-positive'}`}
+            style={{opacity:Math.min(1,Math.hypot(drag.x,drag.y)/110)}} aria-hidden="true">
+            {findRadialTarget(piles,drag.x,drag.y)==='reject'
+              ? 'DESCARTAR'
+              : piles.find(p=>p.id===findRadialTarget(piles,drag.x,drag.y))?.name || ''}
           </div>
         )}
 
